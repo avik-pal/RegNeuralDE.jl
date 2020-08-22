@@ -11,7 +11,7 @@ using ReverseDiff, ForwardDiff
 # Plotting
 using Plots
 # Data Processing
-using MLDatasets, MLDataUtils
+using MLDatasets, MLDataUtils, BSON
 using Flux.Data: DataLoader
 
 
@@ -31,7 +31,7 @@ include("train.jl")
 
 
 # Export functions
-export load_mnist
+export load_mnist, load_physionet
 export NFECounterCallbackNeuralODE, NFECounterNeuralODE, ClassifierNODE, TimeDependentMLPDynamics
 
 end
