@@ -46,3 +46,50 @@ function load_physionet(batchsize::Int, path::String, train_test_split::Float64 
     return (DataLoader(device_func.(train_data)..., batchsize = batchsize, shuffle = true),
             DataLoader(device_func.(test_data)..., batchsize = batchsize, shuffle = true))
 end
+
+
+function load_spiral2d(batchsize::Int, device_func = cpu; nspiral = 1000,
+                       ntotal = 500, nsample = 100, start = 0.0,
+                       stop = 1.0, noise_std = 0.1, a = 0.0, b = 1.0)
+    # Toy Spiral 2D dataset for testing regularization on time series
+    # extrapolation problem
+    # A 2D spiral is parameterized by `r = a + b * theta`
+    orig_ts = range(start, stop, length = ntotal)
+    samp_ts = orig_ts[1:nsample]
+
+    # clockwise and counter clockwissse spirals in observation space
+    zs_cw = stop .+ 1.0f0 .- orig_ts
+    rs_cw = a .+ b .* 50.0f0 ./ zs_cw
+    xs = reshape(rs_cw .* cos.(zs_cw) .- 5.0f0, 1, :)
+    ys = reshape(rs_cw .* sin.(zs_cw), 1, :)
+    orig_traj_cw = reshape(cat(xs, ys, dims = 1), 2, :, 1)
+
+    zs_cc = orig_ts
+    rw_cc = a .+ b .* zs_cc
+    xs = reshape(rw_cc .* cos.(zs_cc) .+ 5.0f0, 1, :)
+    ys = reshape(rw_cc .* sin.(zs_cc), 1, :)
+    orig_traj_cc = reshape(cat(xs, ys, dims = 1), 2, :, 1)
+
+    sample_trajectories = []
+    original_trajectories = []
+    for _ in 1:nspiral
+        t₀ = rand(1:(ntotal - 2 * nsample)) + nsample - 1
+
+        orig_traj = rand() > 0.5 ? orig_traj_cc : orig_traj_cw
+        push!(original_trajectories, copy(orig_traj))
+
+        samp_traj = copy(orig_traj[:, t₀:t₀ + nsample - 1, :])
+        samp_traj .+= randn(size(samp_traj)) .* noise_std
+        push!(sample_trajectories, samp_traj)
+    end
+    
+    original_trajectories = Float32.(cat(original_trajectories..., dims = 3))
+    original_tp = Float32.(reshape(repeat(collect(orig_ts), nspiral), :, nspiral))
+    sampled_trajectories = Float32.(cat(sample_trajectories..., dims = 3))
+    sampled_tp = Float32.(reshape(repeat(collect(samp_ts), nspiral), :, nspiral))
+
+    return (DataLoader(device_func.([sampled_trajectories, sampled_tp])...,
+                       batchsize = batchsize, shuffle = true),
+            DataLoader(device_func.([original_trajectories, original_tp])...,
+                       batchsize = batchsize, shuffle = true))
+end

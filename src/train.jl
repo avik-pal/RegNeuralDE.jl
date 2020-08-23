@@ -38,3 +38,60 @@ function train!(model::ClassifierNODE, opt, epochs::Int, train_dataloader,
 
     return model, nfe_count, train_accuracies, test_accuracies
 end
+
+
+function train!(model::ExtrapolationLatentODE, opt, epochs::Int, train_dataloader,
+                test_dataloader, loss_fn, test_loss_func = nothing)
+    test_loss_func = isnothing(test_loss_func) ? loss_fn : test_loss_func 
+    function get_total_loss(data)
+        acc_loss, total_dpoints = 0, 0
+        for (x, t) in data
+            npoints = size(x, 3)
+            total_dpoints += npoints
+            acc_loss = test_loss_func(x, model) * npoints
+        end
+        return acc_loss / total_dpoints
+    end
+    
+    running_train_loss = AverageMeter(eltype(train_dataloader.data[1]))
+    # running_test_loss = AverageMeter(eltype(test_dataloader.data[1]))
+    
+    nfe_count, train_losses, test_losses = [], [], []
+
+    push!(train_losses, update!(running_train_loss,
+                                get_total_loss(train_dataloader)))
+    # push!(test_losses, get_total_loss(test_dataloader))
+    # @printf("Before Training || Train Loss: %2.3f || Test Loss: %2.3f\n",
+    #         train_losses[end], test_losses[end])
+    @printf("Before Training || Train Loss: %2.3f\n", train_losses[end])
+
+    ps = Flux.trainable(model)
+    
+    for epoch in 1:epochs
+        prev_nfe = model.node.nfe[]
+    
+        for (x, t) in train_dataloader
+            gs = ReverseDiff.gradient(
+                (p1, p2, p3) -> loss_fn(x, model, p1, p2, p3), ps
+            )
+            for (p, g) in zip(ps, gs)
+                length(p) == 0 && continue
+                Flux.Optimise.update!(opt, p, g)
+            end
+        end
+
+        # Store the NFE counts
+        push!(nfe_count, (model.node.nfe[] - prev_nfe) / length(train_dataloader))
+
+        # Compute the test loss
+        push!(train_losses, update!(running_train_loss,
+                                    get_total_loss(train_dataloader)))
+        # push!(test_losses, get_total_loss(test_dataloader))
+        # @printf("Epoch: %3d || Train Loss: %2.3f || Test Loss: %2.3f || NFE: %2.3f\n",
+        #     epoch, train_losses[end], test_losses[end], nfe_count[end])
+        @printf("Epoch: %3d || Train Loss: %2.3f || NFE: %2.3f\n", epoch,
+                train_losses[end], nfe_count[end])
+    end
+
+    return model, nfe_count, train_losses, test_losses
+end
