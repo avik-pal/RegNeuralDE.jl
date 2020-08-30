@@ -12,4 +12,5 @@ Regularizing Neural ODEs to make them easier to solve during evaluation
 
 ![Spiral 2D Time Series Extrapolation](notebooks/latent_ode_extrapolation.png)
 
-### Physionet Latent ODE Time Series Interpolation
+## Performance Benchmarks
+

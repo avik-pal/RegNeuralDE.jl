@@ -87,6 +87,11 @@ function diffeqsol_to_cuarray(x)
     return reshape(xarr, size(xarr)[1:2])
 end
 
+function diffeqsol_to_trackedarray(x)
+    xarr = x.u[1]
+    return reshape(xarr, size(xarr)[1:2])
+end
+
 
 # Running Average Meter
 mutable struct AverageMeter{T}

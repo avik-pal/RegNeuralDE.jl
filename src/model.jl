@@ -88,15 +88,35 @@ struct NFECounterCallbackNeuralODE{M, P, RE, T, A, K} <: DiffEqFlux.NeuralDELaye
     end
 end
 
-function (n::NFECounterCallbackNeuralODE)(x, p::AbstractArray{T} = n.p) where T
+function (n::NFECounterCallbackNeuralODE{M, P})(x, p::P = n.p) where {M, P<:TrackedArray}
     function dudt_(u, p, t)
         n.nfe[] += 1
         n.re(p)(u)
     end
 
-    tspan = T.(n.tspan)
+    tspan = Tracker.collect(eltype(p).(n.tspan))
 
-    sv = SavedValues(eltype(tspan), T)
+    sv = SavedValues(eltype(tspan), eltype(p))
+    svcb = SavingCallback(
+        (u, t, integrator) -> integrator.EEst * integrator.dt, sv
+    )
+
+    ff = ODEFunction{false}(dudt_)
+    prob = ODEProblem{false}(ff, x, tspan, p)
+
+    solve(prob, n.args...; sensealg = SensitivityADPassThrough(),
+          callback = svcb, n.kwargs...), sv
+end
+
+function (n::NFECounterCallbackNeuralODE)(x, p = n.p)
+    function dudt_(u, p, t)
+        n.nfe[] += 1
+        n.re(p)(u)
+    end
+
+    tspan = eltype(p).(n.tspan)
+
+    sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback(
         (u, t, integrator) -> integrator.EEst * integrator.dt, sv
     )

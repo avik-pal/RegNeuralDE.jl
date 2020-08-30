@@ -5,15 +5,25 @@ using Statistics, LinearAlgebra, Printf
 # DiffEq Packages
 using DiffEqFlux, OrdinaryDiffEq, DiffEqCallbacks, DiffEqSensitivity
 # Neural Networks
-using Flux
+using Flux, CUDA
 # AD Packages
-using ReverseDiff, ForwardDiff
+using ReverseDiff, ForwardDiff, Tracker
 # Plotting
 using Plots
 # Data Processing
 using MLDatasets, MLDataUtils, BSON
 using Flux.Data: DataLoader
 
+# The latest version of Distributions AD has these fixes. For now keeping
+# them here
+Base.prevfloat(r::Tracker.TrackedReal) = Tracker.track(prevfloat, r)
+Tracker.@grad function prevfloat(r::Real)
+    prevfloat(Tracker.data(r)), Δ -> (Δ,)
+end
+Base.nextfloat(r::Tracker.TrackedReal) = Tracker.track(nextfloat, r)
+Tracker.@grad function nextfloat(r::Real)
+    nextfloat(Tracker.data(r)), Δ -> (Δ,)
+end
 
 # Hacks to make things work
 function (ReverseDiff.TrackedReal{V, D, O})(val::ForwardDiff.Dual) where {V, D, O}
