@@ -13,6 +13,8 @@ using Plots
 # Data Processing
 using MLDatasets, MLDataUtils, BSON
 using Flux.Data: DataLoader
+# Helper Modules
+using MacroTools: @forward
 
 # The latest version of Distributions AD has these fixes. For now keeping
 # them here
@@ -43,6 +45,6 @@ include("train.jl")
 # Export functions
 export load_mnist, load_physionet, load_spiral2d
 export NFECounterCallbackNeuralODE, NFECounterNeuralODE, ClassifierNODE,
-       TimeDependentMLPDynamics, RecognitionRNN, ExtrapolationLatentODE
+       TDChain, RecognitionRNN, ExtrapolationLatentODE
 
 end

@@ -1,27 +1,31 @@
 # MLP Dynamics conditioned on the Time Step
-struct TimeDependentMLPDynamics{M}
-    model::M
-    
-    function TimeDependentMLPDynamics(dims::Vector{Int}, act = tanh)
-        layers = []
-        for i in 1:length(dims) - 2
-            push!(layers, Dense(dims[i] + 1, dims[i + 1], act))
-        end
-        push!(layers, Dense(dims[end - 1] + 1, dims[end]))
-        model = Chain(layers...)
-        return new{typeof(model)}(model)
-    end
+struct TDChain{T<:Tuple}
+    layers::T
+    TDChain(xs...) = new{typeof(xs)}(xs)
 end
 
-Flux.@functor TimeDependentMLPDynamics
+@forward TDChain.layers Base.getindex, Base.length, Base.first, Base.last,
+         Base.iterate, Base.lastindex
 
-function (m::TimeDependentMLPDynamics)(x, t::Number)
+Flux.functor(::Type{<:TDChain}, c) = c.layers, ls -> TDChain(ls...)
+
+applytdchain(::Tuple{}, x, t) = x
+applytdchain(fs::Tuple, x, t) = applytdchain(Base.tail(fs), first(fs)(vcat(x, t)), t)
+
+function (c::TDChain)(x::AbstractMatrix, t)
     _t = similar(x, 1, size(x, 2))
     fill!(_t, t)
-    for layer in m.model
-        x = layer(cat(x, _t, dims = 1))
-    end
-    return x
+    return applytdchain(c.layers, x, _t)
+end
+         
+Base.getindex(c::TDChain, i::AbstractArray) = TDChain(c.layers[i]...)
+         
+Flux.testmode!(m::TDChain, mode = true) = (map(x -> testmode!(x, mode), m.layers); m)
+         
+function Base.show(io::IO, c::TDChain)
+    print(io, "TimeDependentChain(")
+    join(io, c.layers, ", ")
+    print(io, ")")
 end
 
 # Neural ODE Variants
@@ -56,7 +60,7 @@ function (n::NFECounterNeuralODE)(x, p = n.p)
     solve(prob, n.args...; sensealg = SensitivityADPassThrough(), n.kwargs...)
 end
 
-function (n::NFECounterNeuralODE{M})(x, p = n.p) where M <: TimeDependentMLPDynamics
+function (n::NFECounterNeuralODE{M})(x, p = n.p) where M <: TDChain
     function dudt_(u, p, t)
         n.nfe[] += 1
         n.re(p)(u, t)
@@ -128,7 +132,7 @@ function (n::NFECounterCallbackNeuralODE)(x, p = n.p)
           callback = svcb, n.kwargs...), sv
 end
 
-function (n::NFECounterCallbackNeuralODE{M})(x, p::AbstractArray{T} = n.p) where {T, M <: TimeDependentMLPDynamics}
+function (n::NFECounterCallbackNeuralODE{M})(x, p::AbstractArray{T} = n.p) where {T, M <: TDChain}
     function dudt_(u, p, t)
         n.nfe[] += 1
         n.re(p)(u, t)
