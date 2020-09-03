@@ -12,14 +12,17 @@ Flux.functor(::Type{<:TDChain}, c) = c.layers, ls -> TDChain(ls...)
 applytdchain(::Tuple{}, x, t) = x
 applytdchain(fs::Tuple, x, t) = applytdchain(Base.tail(fs), first(fs)(vcat(x, t)), t)
 
+# Inference for Tracker fails if using the default Flux layers
+# https://github.com/FluxML/Tracker.jl/issues/84. As a temporary fix use
+# the layers exported from RegNeuralODE
 function (c::TDChain)(x::AbstractMatrix, t)
     _t = similar(x, 1, size(x, 2))
     fill!(_t, t)
     return applytdchain(c.layers, x, _t)
 end
-         
+
 Base.getindex(c::TDChain, i::AbstractArray) = TDChain(c.layers[i]...)
-         
+
 Flux.testmode!(m::TDChain, mode = true) = (map(x -> testmode!(x, mode), m.layers); m)
          
 function Base.show(io::IO, c::TDChain)
@@ -27,6 +30,31 @@ function Base.show(io::IO, c::TDChain)
     join(io, c.layers, ", ")
     print(io, ")")
 end
+
+
+# Some Common Network Layers
+
+## This layer doesn't have bias. Tracker cause inference issues with Dense
+struct Linear{W, S}
+    weight::W
+    σ::S
+end
+
+Linear(W) = Linear(W, identity)
+
+Linear(in::Integer, out::Integer, σ = identity; initW = Flux.glorot_uniform) =
+    Linear(initW(out, in), σ)
+
+Flux.@functor Linear
+
+(l::Linear)(x::AbstractArray) = l.σ.(l.weight * x)
+
+function Base.show(io::IO, l::Linear)
+    print(io, "Linear(", size(l.weight, 2), ", ", size(l.weight, 1))
+    l.σ == identity || print(io, ", ", l.σ)
+    print(io, ")")
+end
+
 
 # Neural ODE Variants
 struct NFECounterNeuralODE{M, P, RE, T, A, K} <: DiffEqFlux.NeuralDELayer
@@ -50,21 +78,22 @@ struct NFECounterNeuralODE{M, P, RE, T, A, K} <: DiffEqFlux.NeuralDELayer
     end
 end
 
-function (n::NFECounterNeuralODE)(x, p = n.p)
+function _get_dudt(n::NFECounterNeuralODE)
     function dudt_(u, p, t)
         n.nfe[] += 1
         n.re(p)(u)
     end
-    ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
-    prob = ODEProblem{false}(ff, x, n.tspan, p)
-    solve(prob, n.args...; sensealg = SensitivityADPassThrough(), n.kwargs...)
 end
 
-function (n::NFECounterNeuralODE{M})(x, p = n.p) where M <: TDChain
+function _get_dudt(n::NFECounterNeuralODE{M}) where M <: TDChain
     function dudt_(u, p, t)
         n.nfe[] += 1
         n.re(p)(u, t)
     end
+end
+
+function (n::NFECounterNeuralODE)(x, p = n.p)
+    dudt_ = _get_dudt(n)
     ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, n.tspan, p)
     solve(prob, n.args...; sensealg = SensitivityADPassThrough(), n.kwargs...)
@@ -92,60 +121,34 @@ struct NFECounterCallbackNeuralODE{M, P, RE, T, A, K} <: DiffEqFlux.NeuralDELaye
     end
 end
 
-function (n::NFECounterCallbackNeuralODE{M, P})(x, p::P = n.p) where {M, P<:TrackedArray}
+_convert_tspan(tspan, p) = eltype(p).(tspan)
+
+_convert_tspan(tspan, p::TrackedArray) = Tracker.collect(eltype(p).(tspan))
+
+function _get_dudt(n::NFECounterCallbackNeuralODE)
     function dudt_(u, p, t)
         n.nfe[] += 1
         n.re(p)(u)
     end
-
-    tspan = Tracker.collect(eltype(p).(n.tspan))
-
-    sv = SavedValues(eltype(tspan), eltype(p))
-    svcb = SavingCallback(
-        (u, t, integrator) -> integrator.EEst * integrator.dt, sv
-    )
-
-    ff = ODEFunction{false}(dudt_)
-    prob = ODEProblem{false}(ff, x, tspan, p)
-
-    solve(prob, n.args...; sensealg = SensitivityADPassThrough(),
-          callback = svcb, n.kwargs...), sv
 end
 
-function (n::NFECounterCallbackNeuralODE)(x, p = n.p)
-    function dudt_(u, p, t)
-        n.nfe[] += 1
-        n.re(p)(u)
-    end
-
-    tspan = eltype(p).(n.tspan)
-
-    sv = SavedValues(eltype(tspan), eltype(p))
-    svcb = SavingCallback(
-        (u, t, integrator) -> integrator.EEst * integrator.dt, sv
-    )
-
-    ff = ODEFunction{false}(dudt_, tgrad=DiffEqFlux.basic_tgrad)
-    prob = ODEProblem{false}(ff, x, tspan, p)
-
-    solve(prob, n.args...; sensealg = SensitivityADPassThrough(),
-          callback = svcb, n.kwargs...), sv
-end
-
-function (n::NFECounterCallbackNeuralODE{M})(x, p::AbstractArray{T} = n.p) where {T, M <: TDChain}
+function _get_dudt(n::NFECounterCallbackNeuralODE{M}) where M <: TDChain
     function dudt_(u, p, t)
         n.nfe[] += 1
         n.re(p)(u, t)
     end
+end
 
-    tspan = T.(n.tspan)
+function (n::NFECounterCallbackNeuralODE)(x, p = n.p)
+    dudt_ = _get_dudt(n)
+    tspan = _convert_tspan(n.tspan, p)
 
-    sv = SavedValues(eltype(tspan), T)
+    sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback(
         (u, t, integrator) -> integrator.EEst * integrator.dt, sv
     )
 
-    ff = ODEFunction{false}(dudt_, tgrad=DiffEqFlux.basic_tgrad)
+    ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
 
     solve(prob, n.args...; sensealg = SensitivityADPassThrough(),
