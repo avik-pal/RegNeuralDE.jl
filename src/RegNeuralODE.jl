@@ -8,6 +8,7 @@ using DiffEqFlux, OrdinaryDiffEq, DiffEqCallbacks, DiffEqSensitivity
 using Flux, CUDA
 # AD Packages
 using ReverseDiff, ForwardDiff, Tracker
+using Tracker: data
 # Plotting
 using Plots
 # Data Processing
