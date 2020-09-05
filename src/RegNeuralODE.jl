@@ -5,10 +5,10 @@ using Statistics, LinearAlgebra, Printf
 # DiffEq Packages
 using DiffEqFlux, OrdinaryDiffEq, DiffEqCallbacks, DiffEqSensitivity
 # Neural Networks
-using Flux, CUDA
+using Flux, CUDA, TrackerFlux
 # AD Packages
 using ReverseDiff, ForwardDiff, Tracker
-using Tracker: data
+using Tracker: data, TrackedReal
 # Plotting
 using Plots
 # Data Processing

@@ -21,6 +21,11 @@ function (c::TDChain)(x::AbstractMatrix, t)
     return applytdchain(c.layers, x, _t)
 end
 
+function (c::TDChain)(x::AbstractMatrix, t::TrackedReal)
+    _t = Tracker.collect(ones(eltype(x), 1, size(x, 2))) .* t
+    return applytdchain(c.layers, x, _t)
+end
+
 Base.getindex(c::TDChain, i::AbstractArray) = TDChain(c.layers[i]...)
 
 Flux.testmode!(m::TDChain, mode = true) = (map(x -> testmode!(x, mode), m.layers); m)
