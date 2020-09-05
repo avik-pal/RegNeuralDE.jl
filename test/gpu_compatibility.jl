@@ -1,20 +1,20 @@
 using Test
 # using Revise, BenchmarkTools
 
-using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, TrackerFlux, CUDA
+using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, CUDA
 
 img = rand(Float32, 28, 28, 1, 1) |> gpu;
 
 vanilla_node = ClassifierNODE(
-    Chain(flatten, Linear(784, 20, relu)) |> TrackerFlux.track |> gpu,
+    Chain(flatten, Linear(784, 20, relu)) |> track |> gpu,
     NFECounterNeuralODE(Chain(Linear(20, 10, relu),
                               Linear(10, 10, relu),
-                              Linear(10, 20, relu)) |> TrackerFlux.track |> gpu,
+                              Linear(10, 20, relu)) |> track |> gpu,
                         [0.f0, 1.f0], Tsit5(),
                         save_everystep = false,
                         reltol = 6f-5, abstol = 6f-5,
                         save_start = false),
-    Chain(RegNeuralODE.diffeqsol_to_trackedarray, Linear(20, 10)) |> TrackerFlux.track |> gpu
+    Chain(RegNeuralODE.diffeqsol_to_trackedarray, Linear(20, 10)) |> track |> gpu
 )
 
 ps = Flux.trainable(vanilla_node)
@@ -29,15 +29,15 @@ end
 
 
 reg_node = ClassifierNODE(
-    Chain(flatten, Linear(784, 20, relu)) |> TrackerFlux.track |> gpu,
+    Chain(flatten, Linear(784, 20, relu)) |> track |> gpu,
     NFECounterCallbackNeuralODE(Chain(Linear(20, 10, relu),
                                       Linear(10, 10, relu),
-                                      Linear(10, 20, relu)) |> TrackerFlux.track |> gpu,
+                                      Linear(10, 20, relu)) |> track |> gpu,
                                 [0.f0, 1.f0], Tsit5(),
                                 save_everystep = false,
                                 reltol = 6f-5, abstol = 6f-5,
                                 save_start = false),
-    Chain(RegNeuralODE.diffeqsol_to_trackedarray, Linear(20, 10)) |> TrackerFlux.track |> gpu
+    Chain(RegNeuralODE.diffeqsol_to_trackedarray, Linear(20, 10)) |> track |> gpu
 )
 
 ps = Flux.trainable(reg_node)

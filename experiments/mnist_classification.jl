@@ -6,32 +6,32 @@ epochs = 50
 batch_size = 1024
 lr = 0.05 
 
-train_dataloader, test_dataloader = load_mnist(batch_size, x -> cpu(TrackerFlux.track(x)))
+train_dataloader, test_dataloader = load_mnist(batch_size, x -> cpu(track(x)))
 
 vanilla_node = ClassifierNODE(
-    Chain(flatten, Linear(784, 20)) |> TrackerFlux.track,
+    Chain(flatten, Linear(784, 20)) |> track,
     NFECounterNeuralODE(TDChain(Linear(21, 10, σ),
-                                Linear(11, 20)) |> TrackerFlux.track,
+                                Linear(11, 20)) |> track,
                         [0.f0, 1.f0], Tsit5(),
                         save_everystep = false,
                         reltol = 6f-5, abstol = 6f-5,
                         save_start = false),
     Chain(RegNeuralODE.diffeqsol_to_trackedarray,
-          Linear(20, 10)) |> TrackerFlux.track
+          Linear(20, 10)) |> track
 )
 
 opt_vanilla_node = ADAMW(lr, (0.9, 0.99), 1e-5)
 
 reg_node = ClassifierNODE(
-    Chain(flatten, Linear(784, 20)) |> TrackerFlux.track,
+    Chain(flatten, Linear(784, 20)) |> track,
     NFECounterCallbackNeuralODE(TDChain(Linear(21, 10, σ),
-                                        Linear(11, 20)) |> TrackerFlux.track,
+                                        Linear(11, 20)) |> track,
                                 [0.f0, 1.f0], Tsit5(),
                                 save_everystep = false,
                                 reltol = 6f-5, abstol = 6f-5,
                                 save_start = false),
     Chain(RegNeuralODE.diffeqsol_to_trackedarray,
-          Linear(20, 10)) |> TrackerFlux.track
+          Linear(20, 10)) |> track
 )
 
 # Make the parameters of the network identical
