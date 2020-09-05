@@ -1,4 +1,4 @@
-function load_mnist(batchsize::Int, device_func = cpu)
+function load_mnist(batchsize::Int, transform = cpu)
     # Use MLDataUtils LabelEnc for natural onehot conversion
     onehot(labels_raw) = convertlabel(LabelEnc.OneOfK, labels_raw,
                                       LabelEnc.NativeLabels(collect(0:9)))
@@ -14,17 +14,17 @@ function load_mnist(batchsize::Int, device_func = cpu)
     y_test_data = onehot(labels_raw)
     return (
         # Use Flux's DataLoader to automatically minibatch and shuffle the data
-        DataLoader(device_func.(collect.((x_train_data, y_train_data)));
+        DataLoader(transform.(collect.((x_train_data, y_train_data)));
                    batchsize = batchsize, shuffle = true),
         # Don't shuffle the test data
-        DataLoader(device_func.(collect.((x_test_data, y_test_data)))...;
+        DataLoader(transform.(collect.((x_test_data, y_test_data)))...;
                    batchsize = batchsize, shuffle = false)
     )
 end
 
 
 function load_physionet(batchsize::Int, path::String, train_test_split::Float64 = 0.8,
-                        device_func = cpu)
+                        transform = cpu)
     BSON.@load path data
     total_obs = size(data[:observed_data])[end]
     train_idx, test_idx = splitobs(
@@ -43,12 +43,12 @@ function load_physionet(batchsize::Int, path::String, train_test_split::Float64 
         push!(train_data, data[key][:, train_idx])
         push!(test_data, data[key][:, test_idx])        
     end
-    return (DataLoader(device_func.(train_data)..., batchsize = batchsize, shuffle = true),
-            DataLoader(device_func.(test_data)..., batchsize = batchsize, shuffle = true))
+    return (DataLoader(transform.(train_data)..., batchsize = batchsize, shuffle = true),
+            DataLoader(transform.(test_data)..., batchsize = batchsize, shuffle = true))
 end
 
 
-function load_spiral2d(batchsize::Int, device_func = cpu; nspiral = 1000,
+function load_spiral2d(batchsize::Int, transform = cpu; nspiral = 1000,
                        ntotal = 500, nsample = 100, start = 0.0,
                        stop = 1.0, noise_std = 0.1, a = 0.0, b = 1.0)
     # Toy Spiral 2D dataset for testing regularization on time series
@@ -88,8 +88,8 @@ function load_spiral2d(batchsize::Int, device_func = cpu; nspiral = 1000,
     sampled_trajectories = Float32.(cat(sample_trajectories..., dims = 3))
     sampled_tp = Float32.(reshape(repeat(collect(samp_ts), nspiral), :, nspiral))
 
-    return (DataLoader(device_func.((sampled_trajectories, sampled_tp)),
+    return (DataLoader(transform.((sampled_trajectories, sampled_tp)),
                        batchsize = batchsize, shuffle = true),
-            DataLoader(device_func.((original_trajectories, original_tp)),
+            DataLoader(transform.((original_trajectories, original_tp)),
                        batchsize = batchsize, shuffle = true))
 end
