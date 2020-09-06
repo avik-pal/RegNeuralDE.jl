@@ -14,8 +14,8 @@ struct NFECounterFFJORD{M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
             # model should contain Linear layers (not Dense)
             size_input = size(model[1].weight)[2]
             T = eltype(model[1].weight)
-            basedist = MvNormal(zeros(T, size_input),
-                                I + zeros(T, size_input, size_input))
+            basedist = MvNormal(Tracker.collect(zeros(T, size_input)),
+                                Tracker.collect(I + zeros(T, size_input, size_input)))
         end
         new{typeof(model), typeof(p), typeof(re), typeof(basedist),
             typeof(tspan), typeof(args), typeof(kwargs)}(
@@ -23,62 +23,54 @@ struct NFECounterFFJORD{M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
     end
 end
 
-function _norm_batched(x::AbstractMatrix)
-    res = similar(x, 1, size(x, 2))
-    for i in 1:size(x, 2)
-        res[1, i] = norm(@view x[:, i])
-    end
-    return res
-end
+norm_batched(x::AbstractArray) = sqrt.(sum(x .^ 2, dims = 1))
 
-function ffjord!(du, u, p, t, re, e, regularize)
+function ffjord(u, p, t, re, e, regularize)
     m = re(p)
     if regularize
         z = @view u[1:end - 3, :]
-        mz, back = Zygote.pullback(m, z)
+        mz, back = Tracker.forward(m, z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
-        du[1:end - 3, :] .= mz
-        du[end - 2, :] .= -trace_jac[1, :]
-        du[end - 1, :] .= sum(abs2, mz, dims=1)[1, :]
-        du[end, :] .= _norm_batched(eJ)[1, :] .^ 2
+        return Tracker.collect(cat(mz, -trace_jac, sum(abs2.(mz), dims = 1),
+                                   norm_batched(eJ) .^ 2, dims = 1))
     else
         z = @view u[1:end - 1, :]
-        mz, back = Zygote.pullback(m, z)
+        mz, back = Tracker.forward(m, z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
-        du[1:end - 1, :] .= mz
-        du[end, :] .= -trace_jac[1, :]
+        return Tracker.collect(cat(mz, -trace_jac, dims = 1))
     end
 end
 
 function (n::NFECounterFFJORD)(x, p = n.p, regularize = false)
-    e = randn(eltype(x), size(x))
+    e = Tracker.collect(randn(eltype(x), size(x)))
     pz = n.basedist
-    sense = InterpolatingAdjoint(autojacvec = false)
-    ffjord_ = (du, u, p, t) -> begin
-        Zygote.@ignore n.nfe[] += 1
-        return ffjord!(du, u, p, t, n.re, e, regularize)
+    sense = SensitivityADPassThrough()
+    ffjord_ = (u, p, t) -> begin
+        n.nfe[] += 1
+        return ffjord(u, p, t, n.re, e, regularize)
     end
     if regularize
-        _z = zeros(eltype(x), 3, size(x, 2))
-        prob = ODEProblem{true}(ffjord_, vcat(x, _z), n.tspan, p)
+        _z = Tracker.collect(zeros(eltype(x), 3, size(x, 2)))
+        prob = ODEProblem{false}(ffjord_, vcat(x, _z), n.tspan, p)
         pred = solve(prob, n.args...; sensealg = sense, n.kwargs...)[:, :, end]
-        z = @view pred[1:end - 3, :]
-        delta_logp = reshape(pred[end - 2, :], 1, size(pred, 2))
-        λ₁ = @view pred[end - 1, :]
-        λ₂ = @view pred[end, :]
+        z = Tracker.collect(pred[1:end - 3, :])
+        delta_logp = reshape(Tracker.collect(pred[end - 2, :]), 1, size(pred, 2))
+        λ₁ = Tracker.collect(pred[end - 1, :])
+        λ₂ = Tracker.collect(pred[end, :])
     else
-        _z = zeros(eltype(x), 1, size(x, 2))
-        prob = ODEProblem{true}(ffjord_, vcat(x, _z), n.tspan, p)
+        _z = Tracker.collect(zeros(eltype(x), 1, size(x, 2)))
+        prob = ODEProblem{false}(ffjord_, vcat(x, _z), n.tspan, p)
         pred = solve(prob, n.args...; sensealg = sense, n.kwargs...)[:, :, end]
-        z = @view pred[1:end - 1, :]
-        delta_logp = reshape(pred[end, :], 1, size(pred, 2))
-        λ₁ = λ₂ = @view _z[1, :]
+        z = Tracker.collect(pred[1:end - 1, :])
+        delta_logp = reshape(Tracker.collect(pred[end, :]), 1, size(pred, 2))
+        λ₁ = λ₂ = Tracker.collect(_z[1, :])
     end
 
     # logpdf promotes the type to Float64 by default
-    logpz = eltype(x).(reshape(logpdf(pz, z), 1, size(x, 2)))
+    # This function is type unstable when used with Tracker
+    logpz = reshape(logpdf(pz, z), 1, size(x, 2))
     logpx = logpz .- delta_logp
 
     return logpx, λ₁, λ₂
