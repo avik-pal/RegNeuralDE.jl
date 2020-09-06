@@ -1,11 +1,11 @@
-using DiffEqFlux, OrdinaryDiffEq, Flux, Distributions, Zygote, LinearAlgebra
+using DiffEqFlux, OrdinaryDiffEq, Flux, Distributions, Zygote, LinearAlgebra, RegNeuralODE
 
 # Test convergence on 1D distribution
 nn = Chain(Linear(1, 3, tanh), Linear(3, 1, tanh))
 tspan = (0.0f0, 10.0f0)
 ffjord_test = NFECounterFFJORD(nn, tspan, Tsit5())
 
-data_train = Float32.(rand(Normal(6.0, 0.7)), 1, 100)
+data_train = Float32.(rand(Normal(6.0, 0.7), 1, 100))
 
 function loss_adjoint(θ)
     logpx = ffjord_test(data_train, θ)[1]

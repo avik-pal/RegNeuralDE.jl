@@ -31,22 +31,24 @@ function _norm_batched(x::AbstractMatrix)
     return res
 end
 
-function ffjord(u, p, t, re, e, regularize)
+function ffjord!(du, u, p, t, re, e, regularize)
     m = re(p)
     if regularize
         z = @view u[1:end - 3, :]
         mz, back = Zygote.pullback(m, z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
-        return cat(mz, -trace_jac, sum(abs2, mz, dims=1),
-                   _norm_batched(eJ) .^ 2, dims=1)
+        du[1:end - 3, :] .= mz
+        du[end - 2, :] .= -trace_jac[1, :]
+        du[end - 1, :] .= sum(abs2, mz, dims=1)[1, :]
+        du[end, :] .= _norm_batched(eJ)[1, :] .^ 2
     else
         z = @view u[1:end - 1, :]
         mz, back = Zygote.pullback(m, z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
-        res = cat(mz, -trace_jac, dims=1)
-        return res
+        du[1:end - 1, :] .= mz
+        du[end, :] .= -trace_jac[1, :]
     end
 end
 
@@ -54,13 +56,13 @@ function (n::NFECounterFFJORD)(x, p = n.p, regularize = false)
     e = randn(eltype(x), size(x))
     pz = n.basedist
     sense = InterpolatingAdjoint(autojacvec = false)
-    ffjord_ = (u, p, t) -> begin
+    ffjord_ = (du, u, p, t) -> begin
         Zygote.@ignore n.nfe[] += 1
-        return ffjord(u, p, t, n.re, e, regularize)
+        return ffjord!(du, u, p, t, n.re, e, regularize)
     end
     if regularize
         _z = zeros(eltype(x), 3, size(x, 2))
-        prob = ODEProblem{false}(ffjord_, vcat(x, _z), n.tspan, p)
+        prob = ODEProblem{true}(ffjord_, vcat(x, _z), n.tspan, p)
         pred = solve(prob, n.args...; sensealg = sense, n.kwargs...)[:, :, end]
         z = @view pred[1:end - 3, :]
         delta_logp = reshape(pred[end - 2, :], 1, size(pred, 2))
@@ -68,7 +70,7 @@ function (n::NFECounterFFJORD)(x, p = n.p, regularize = false)
         λ₂ = @view pred[end, :]
     else
         _z = zeros(eltype(x), 1, size(x, 2))
-        prob = ODEProblem{false}(ffjord_, vcat(x, _z), n.tspan, p)
+        prob = ODEProblem{true}(ffjord_, vcat(x, _z), n.tspan, p)
         pred = solve(prob, n.args...; sensealg = sense, n.kwargs...)[:, :, end]
         z = @view pred[1:end - 1, :]
         delta_logp = reshape(pred[end, :], 1, size(pred, 2))
@@ -76,7 +78,7 @@ function (n::NFECounterFFJORD)(x, p = n.p, regularize = false)
     end
 
     # logpdf promotes the type to Float64 by default
-    logpz = reshape(logpdf(pz, z), 1, size(x, 2))
+    logpz = eltype(x).(reshape(logpdf(pz, z), 1, size(x, 2)))
     logpx = logpz .- delta_logp
 
     return logpx, λ₁, λ₂
