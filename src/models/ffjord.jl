@@ -11,11 +11,10 @@ struct NFECounterFFJORD{M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
     function NFECounterFFJORD(model, tspan, args...; basedist = nothing, kwargs...)
         p, re = Flux.destructure(model)
         if basedist === nothing
-            # model should contain Linear layers (not Dense)
-            size_input = size(model[1].weight)[2]
+            size_input = size(hasproperty(model[1], :weight) ? model[1].weight : model[1].W)[2]
             T = eltype(model[1].weight)
-            basedist = MvNormal(Tracker.collect(zeros(T, size_input)),
-                                Tracker.collect(I + zeros(T, size_input, size_input)))
+            basedist = MvNormal(zeros(Float32, size_input),
+                                I + zeros(Float32, size_input, size_input))
         end
         new{typeof(model), typeof(p), typeof(re), typeof(basedist),
             typeof(tspan), typeof(args), typeof(kwargs)}(
@@ -28,14 +27,14 @@ norm_batched(x::AbstractArray) = sqrt.(sum(x .^ 2, dims = 1))
 function ffjord(u, p, t, re, e, regularize)
     m = re(p)
     if regularize
-        z = @view u[1:end - 3, :]
+        z = u[1:end - 3, :]
         mz, back = Tracker.forward(m, z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
         return Tracker.collect(cat(mz, -trace_jac, sum(abs2.(mz), dims = 1),
                                    norm_batched(eJ) .^ 2, dims = 1))
     else
-        z = @view u[1:end - 1, :]
+        z = u[1:end - 1, :]
         mz, back = Tracker.forward(m, z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
@@ -43,8 +42,9 @@ function ffjord(u, p, t, re, e, regularize)
     end
 end
 
-function (n::NFECounterFFJORD)(x, p = n.p, regularize = false)
-    e = Tracker.collect(randn(eltype(x), size(x)))
+function (n::NFECounterFFJORD)(x, p = n.p,
+                               e = Tracker.collect(randn(eltype(x), size(x))),
+                               regularize = false)
     pz = n.basedist
     sense = SensitivityADPassThrough()
     ffjord_ = (u, p, t) -> begin
