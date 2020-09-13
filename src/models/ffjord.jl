@@ -22,8 +22,6 @@ struct NFECounterFFJORD{M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
     end
 end
 
-norm_batched(x::AbstractArray) = sqrt.(sum(x .^ 2, dims = 1))
-
 function ffjord(u, p, t, re, e, regularize)
     m = re(p)
     if regularize
@@ -74,4 +72,58 @@ function (n::NFECounterFFJORD)(x, p = n.p,
     logpx = logpz .- delta_logp
 
     return logpx, λ₁, λ₂
+end
+
+
+struct NFECounterCallbackFFJORD{M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
+    model::M
+    p::P
+    re::RE
+    basedist::D
+    tspan::T
+    args::A
+    kwargs::K
+    nfe::Vector{Int}
+
+    function NFECounterCallbackFFJORD(model, tspan, args...; basedist = nothing, kwargs...)
+        p, re = Flux.destructure(model)
+        if basedist === nothing
+            size_input = size(hasproperty(model[1], :weight) ? model[1].weight : model[1].W)[2]
+            T = eltype(model[1].weight)
+            basedist = MvNormal(zeros(Float32, size_input),
+                                I + zeros(Float32, size_input, size_input))
+        end
+        new{typeof(model), typeof(p), typeof(re), typeof(basedist),
+            typeof(tspan), typeof(args), typeof(kwargs)}(
+            model, p, re, basedist, tspan, args, kwargs, [0])
+    end
+end
+
+function (n::NFECounterCallbackFFJORD)(x, p = n.p,
+                                       e = Tracker.collect(randn(eltype(x), size(x))))
+    pz = n.basedist
+    tspan = _convert_tspan(n.tspan, p)
+    sense = SensitivityADPassThrough()
+    sv = SavedValues(eltype(tspan), eltype(p))
+    svcb = SavingCallback(
+        (u, t, integrator) -> integrator.EEst * integrator.dt, sv
+    )
+    ffjord_ = (u, p, t) -> begin
+        n.nfe[] += 1
+        return ffjord(u, p, t, n.re, e, false)
+    end
+    _z = Tracker.collect(zeros(eltype(x), 1, size(x, 2)))
+
+    prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
+    pred = solve(prob, n.args...; sensealg = sense, callback = svcb,
+                 n.kwargs...)[:, :, end]
+    z = Tracker.collect(pred[1:end - 1, :])
+    delta_logp = reshape(Tracker.collect(pred[end, :]), 1, size(pred, 2))
+
+    # logpdf promotes the type to Float64 by default
+    # This function is type unstable when used with Tracker
+    logpz = reshape(logpdf(pz, z), 1, size(x, 2))
+    logpx = logpz .- delta_logp
+
+    return (logpx, sv)
 end

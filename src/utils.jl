@@ -92,6 +92,11 @@ function diffeqsol_to_trackedarray(x)
     return reshape(xarr, size(xarr)[1:2])
 end
 
+_convert_tspan(tspan, p) = eltype(p).(tspan)
+
+_convert_tspan(tspan, p::TrackedArray) = Tracker.collect(eltype(p).(tspan))
+
+norm_batched(x::AbstractArray) = sqrt.(sum(x .^ 2, dims = 1))
 
 # Running Average Meter
 mutable struct AverageMeter{T}

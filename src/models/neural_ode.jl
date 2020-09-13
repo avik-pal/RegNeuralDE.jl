@@ -63,10 +63,6 @@ struct NFECounterCallbackNeuralODE{M, P, RE, T, A, K} <: DiffEqFlux.NeuralDELaye
     end
 end
 
-_convert_tspan(tspan, p) = eltype(p).(tspan)
-
-_convert_tspan(tspan, p::TrackedArray) = Tracker.collect(eltype(p).(tspan))
-
 function _get_dudt(n::NFECounterCallbackNeuralODE)
     function dudt_(u, p, t)
         n.nfe[] += 1

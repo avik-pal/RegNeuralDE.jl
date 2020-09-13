@@ -43,7 +43,8 @@ include("train.jl")
 # Export functions
 export load_mnist, load_physionet, load_spiral2d
 export NFECounterCallbackNeuralODE, NFECounterNeuralODE, ClassifierNODE,
-       TDChain, RecognitionRNN, ExtrapolationLatentODE, Linear, NFECounterFFJORD
+       TDChain, RecognitionRNN, ExtrapolationLatentODE, Linear, NFECounterFFJORD,
+       NFECounterCallbackFFJORD
 export track, untrack
 
 end
