@@ -32,6 +32,22 @@ function get_loss_function(model::ClassifierNODE{T}; λ = 1.0f2) where T<:NFECou
     return regularized_logitcrossentropy_loss
 end
 
+function get_loss_function(model::NFECounterFFJORD, regularize = false)
+    function ffjord_logpx_loss(x::AbstractArray{T}, model, p) where T
+        logpx, λ₁, λ₂ = model(x, p; regularize = regularize)
+        return mean(-logpx .+ T(0.01) .* λ₁ .+ λ₂)
+    end
+    return ffjord_logpx_loss
+end
+
+function get_loss_function(model::NFECounterCallbackFFJORD; λ = 1.0f2)
+    function ffjord_regularized_logpx_loss(x, model, p)
+        logpx, sv = model(x, p)
+        return -mean(logpx) + λ * mean(sv.saveval)
+    end
+    return ffjord_regularized_logpx_loss
+end
+
 function get_loss_function(model::ExtrapolationLatentODE)
     function loss_extrapolating_latent_ode(x::AbstractArray{T},
                                            model, ps...) where T

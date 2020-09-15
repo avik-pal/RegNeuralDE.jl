@@ -65,6 +65,57 @@ function train_tracker!(model::ClassifierNODE, opt, epochs::Int,
 end
 
 
+function train!(model::DiffEqFlux.CNFLayer, opt, epochs::Int, train_dataloader,
+                test_dataloader, grad_func, loss_func)
+    # Initialize some logging utilities
+    nfe_count = Vector{Float64}(undef, epochs)
+    train_losses = Vector{Float64}(undef, epochs + 1)
+    test_losses = Vector{Float64}(undef, epochs + 1)
+    runtimes = Vector{Float64}(undef, epochs)
+
+    p = Flux.trainable(model)[1]
+
+    train_losses[1] = data(mean([loss_func(x, model, p) for x in train_dataloader]))
+    test_losses[1] = data(mean([loss_func(x, model, p) for x in test_dataloader]))
+    @printf("Before Training || Train Loss: %2.3f || Test Loss: %2.3f\n",
+            train_losses[1], test_losses[1])
+
+    for epoch in 1:epochs
+        prev_nfe = model.nfe[]
+        
+        start_time = time()
+
+        for (i, x) in enumerate(train_dataloader)
+            g = grad_func(x, p)[1]
+            Flux.Optimise.update!(opt, data(p), data(g))
+        end
+        # Record the time per epoch
+        runtimes[epoch] = time() - start_time
+
+        # Store the NFE counts
+        nfe_count[epoch] = (model.nfe[] - prev_nfe) / length(train_dataloader)
+
+        # Compute the train and test accuracies
+        train_losses[epoch + 1] = data(mean([loss_func(x, model, p) for x in train_dataloader]))
+        test_losses[epoch + 1] = data(mean([loss_func(x, model, p) for x in test_dataloader]))
+        @printf("Epoch: %3d || Train Loss: %2.3f || Test Loss: %2.3f || NFE: %2.3f || Epoch Time: %2.3f\n",
+                epoch, train_losses[epoch + 1], test_losses[epoch + 1], nfe_count[epoch], runtimes[epoch])
+    end
+    
+    return (model, Dict(:nfe_count => nfe_count,
+                        :train_losses => train_losses,
+                        :test_losses => test_losses,
+                        :time_per_epoch => runtimes))
+end
+
+function train_tracker!(model::DiffEqFlux.CNFLayer, opt, epochs::Int,
+                        train_dataloader, test_dataloader, loss_fn)
+    return train!(model, opt, epochs, train_dataloader, test_dataloader,
+                  (data, p) -> Tracker.gradient(p -> loss_fn(data, model, p), p),
+                  loss_fn)
+end
+
+
 # function train_reversediff!(model::ExtrapolationLatentODE, opt, epochs::Int,
 #                             train_dataloader, test_dataloader, loss_fn,
 #                             test_loss_func = nothing)

@@ -41,7 +41,7 @@ function ffjord(u, p, t, re, e, regularize)
 end
 
 function (n::NFECounterFFJORD)(x, p = n.p,
-                               e = Tracker.collect(randn(eltype(x), size(x))),
+                               e = Tracker.collect(randn(eltype(x), size(x)));
                                regularize = false)
     pz = n.basedist
     sense = SensitivityADPassThrough()
