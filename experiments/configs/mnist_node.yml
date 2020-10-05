@@ -1,0 +1,10 @@
+name: MNIST Vanilla Neural ODE
+log_dir: /mnt/research/RegNeuralODE.jl/results/mnist_node/
+seed: 1099
+hyperparameters:
+    batch_size: 100
+    regularize: false
+    hidden_dims: 200
+    input_dims: 784
+    lr: 0.01
+    epochs: 10

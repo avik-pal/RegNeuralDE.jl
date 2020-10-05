@@ -20,13 +20,6 @@ Flux.trainable(m::ClassifierNODE) = (m.p1, m.p2, m.p3)
 
 function (m::ClassifierNODE)(x, p1 = m.p1, p2 = m.p2, p3 = m.p3)
     x = m.preode(p1)(x)
-    x = m.node(x, p2)
-    return m.postode(p3)(x)
-end
-
-function (m::ClassifierNODE{T})(x, p1 = m.p1, p2 = m.p2,
-                                p3 = m.p3) where T<:NFECounterCallbackNeuralODE 
-    x = m.preode(p1)(x)
-    x, sv = m.node(x, p2)
-    return m.postode(p3)(x), sv
+    x, sol, sv = m.node(x, p2)
+    return m.postode(p3)(x), sol, sv
 end

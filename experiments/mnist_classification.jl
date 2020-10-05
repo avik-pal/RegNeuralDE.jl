@@ -1,10 +1,10 @@
-using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, TrackerFlux, Random, Plots
+using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, Random, Plots
 
 Random.seed!(1029)
 
 epochs = 50
 batch_size = 1024
-lr = 0.05 
+lr = 0.05
 
 train_dataloader, test_dataloader = load_mnist(batch_size, x -> cpu(track(x)))
 
