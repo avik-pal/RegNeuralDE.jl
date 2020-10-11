@@ -1,19 +1,3 @@
-# # Loss Functions
-
-# ## All the functions have a common defination. `get_loss_function` takes the model
-# ## architecture and returns a loss function
-
-# get_loss_function(model::ClassifierNODE) =
-#     (x, y, model, ps...) -> Flux.logitcrossentropy(model(x, ps...), y)
-
-# function get_loss_function(model::ClassifierNODE{T}; λ = 1.0f2) where T<:NFECounterCallbackNeuralODE
-#     function regularized_logitcrossentropy_loss(x, y, model, ps...)
-#         pred, sv = model(x, ps...)
-#         return Flux.logitcrossentropy(pred, y) + λ * mean(sv.saveval)
-#     end
-#     return regularized_logitcrossentropy_loss
-# end
-
 # function get_loss_function(model::NFECounterFFJORD, regularize = false)
 #     function ffjord_logpx_loss(x::AbstractArray{T}, model, p) where T
 #         logpx, λ₁, λ₂ = model(x, p; regularize = regularize)

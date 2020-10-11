@@ -1,5 +1,6 @@
 using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, Random, Statistics
-using ProgressLogging, YAML, Dates
+using ProgressLogging, YAML, Dates, BSON
+using CUDA
 using RegNeuralODE: accuracy
 using Flux.Optimise: update!
 using Flux: @functor, glorot_uniform, logitcrossentropy
@@ -20,6 +21,7 @@ INPUT_DIMS = hparams["input_dims"]
 LR = hparams["lr"]
 EPOCHS = hparams["epochs"]
 EXPERIMENT_LOGDIR = joinpath(config["log_dir"], string(now()))
+MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 
 # Create a directory to store the results
@@ -128,6 +130,12 @@ results = Dict(
     :test_accuracies => test_accuracies,
     :train_runtimes => train_runtimes,
     :inference_runtimes => inference_runtimes
+)
+
+BSON.@save MODEL_WEIGHTS Dict(
+    :p1 => node.p1,
+    :p2 => node.p2,
+    :p3 => node.p3
 )
 
 YAML.write_file(FILENAME, results)
