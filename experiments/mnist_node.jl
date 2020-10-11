@@ -7,7 +7,7 @@ using Tracker: TrackedReal, data
 import Base.show
 
 ## Training Parameters
-config_file = "/mnt/research/RegNeuralODE.jl/experiments/configs/mnist_node.yml"
+config_file = joinpath(pwd(), "experiments", "configs", "mnist_node.yml")
 config = YAML.load_file(config_file)
 
 Random.seed!(config["seed"])
@@ -57,19 +57,19 @@ Base.show(io::IO, mlp::MLPDynamics) =
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> cpu(track(x)))
 
 # Define the models
-mlp_dynamics = MLPDynamics(INPUT_DIMS, HIDDEN_DIMS)
+mlp_dynamics = MLPDynamics(64, 128)
 
 node = ClassifierNODE(
-    x -> reshape(x, 784, :),
+    Chain(x -> reshape(x, 784, :), Linear(784, 256, relu), Linear(256, 64)) |> track,
     TrackedNeuralODE(mlp_dynamics |> track, [0.f0, 1.f0], true,
                      REGULARIZE, Tsit5(), save_everystep = false,
                      reltol = 6f-5, abstol = 6f-5, save_start = false),
-    Chain(Linear(784, 10)) |> track
+    Chain(Linear(64, 10)) |> track
 )
 
 opt = ADAMW(LR, (0.9, 0.99), 1e-5)
 
-function loss_function(x, y, model, p1, p2, p3; λ = 1.0f0)
+function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, sol, sv = model(x, p1, p2, p3)
     return logitcrossentropy(pred, y) +(
         REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
@@ -90,9 +90,11 @@ dummy_data = rand(Float32, 28, 28, 1, 1) |> track
 start_time = time()
 _, sol, _ = node(dummy_data)
 inference_runtimes[1] = time() - start_time
+train_runtimes[1] = 0.0
 nfe_counts[1] = sol.destats.nf
 train_accuracies[1] = accuracy(node, train_dataloader)
 test_accuracies[1] = accuracy(node, test_dataloader)
+@info (train_runtimes[1], inference_runtimes[1], nfe_counts[1], train_accuracies[1], test_accuracies[1])
 
 @progress for epoch in 1:EPOCHS
     start_time = time()
@@ -116,6 +118,8 @@ test_accuracies[1] = accuracy(node, test_dataloader)
     # Test and Train Accuracy
     train_accuracies[epoch + 1] = accuracy(node, train_dataloader)
     test_accuracies[epoch + 1] = accuracy(node, test_dataloader)
+
+    @info (train_runtimes[epoch + 1], inference_runtimes[epoch + 1], nfe_counts[epoch + 1], train_accuracies[epoch + 1], test_accuracies[epoch + 1])
 end
 
 results = Dict(
