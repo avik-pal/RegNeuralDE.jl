@@ -16,6 +16,7 @@ using MLDatasets, MLDataUtils, BSON
 using Flux.Data: DataLoader
 # Helper Modules
 using MacroTools: @forward
+using EllipsisNotation
 
 
 # These should be in Tracker.jl
@@ -35,7 +36,7 @@ include("losses.jl")
 # Export functions
 export load_mnist, load_physionet, load_spiral2d
 export TrackedNeuralODE, ClassifierNODE, TDChain, RecognitionRNN, Linear,
-       TrackedFFJORD, PhysionetLatentGRU
+       TrackedFFJORD
 export track, untrack
 
 end

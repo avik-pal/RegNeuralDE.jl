@@ -29,14 +29,14 @@ function _ffjord(u, p, t, re, e, regularize)
     m = re(p)
     if regularize
         z = u[1:end - 3, :]
-        mz, back = Tracker.forward(m, z)
+        mz, back = Tracker.forward(m, z, t)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
         return Tracker.collect(cat(mz, -trace_jac, sum(abs2.(mz), dims = 1),
                                    norm_batched(eJ) .^ 2, dims = 1))
     else
         z = u[1:end - 1, :]
-        mz, back = Tracker.forward(m, z)
+        mz, back = Tracker.forward(m, z, t)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
         return Tracker.collect(cat(mz, -trace_jac, dims = 1))
