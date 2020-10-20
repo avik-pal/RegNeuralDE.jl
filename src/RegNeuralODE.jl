@@ -12,7 +12,7 @@ using Distributions, DistributionsAD
 using Tracker
 using Tracker: data, TrackedReal
 # Data Processing
-using MLDatasets, MLDataUtils, BSON
+using MLDatasets, MLDataUtils, BSON, NPZ
 using Flux.Data: DataLoader
 # Helper Modules
 using MacroTools: @forward
@@ -34,7 +34,7 @@ include("losses.jl")
 
 
 # Export functions
-export load_mnist, load_physionet, load_spiral2d
+export load_mnist, load_physionet, load_spiral2d, load_miniboone
 export TrackedNeuralODE, ClassifierNODE, TDChain, RecognitionRNN, Linear,
        TrackedFFJORD
 export track, untrack

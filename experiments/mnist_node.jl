@@ -28,8 +28,6 @@ FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 isdir(EXPERIMENT_LOGDIR) || mkpath(EXPERIMENT_LOGDIR)
 cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 
-# This model is same as the ones in https://github.com/jacobjinkelly/easy-neural-ode/blob/master/mnist.py
-
 # The dynamics of the Neural ODE are time dependent
 struct MLPDynamics{W1, B1, W2, B2}
     weight_1::W1

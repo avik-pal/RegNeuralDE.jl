@@ -7,12 +7,12 @@ struct TrackedFFJORD{R, M, P, RE, D, T, A, K} <: DiffEqFlux.CNFLayer
     args::A
     kwargs::K
 
-    function TrackedFFJORD(model, tspan, regularize, args...;
+    function TrackedFFJORD(model, tspan, regularize, in_dims, args...;
                            basedist = nothing, kwargs...)
         p, re = Flux.destructure(model)
         if basedist === nothing
-            size_input = size(hasproperty(model[1], :weight) ? model[1].weight : model[1].W)[2]
-            T = eltype(model[1].weight)
+            size_input = in_dims
+            T = Float32
             basedist = MvNormal(zeros(Float32, size_input),
                                 I + zeros(Float32, size_input, size_input))
         end
@@ -48,7 +48,7 @@ function (n::TrackedFFJORD{false})(x, p = n.p,
                                    regularize = false)
     pz = n.basedist
     sense = SensitivityADPassThrough()
-    ffjord_ = (u, p, t) -> ffjord(u, p, t, n.re, e, regularize)
+    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, regularize)
     if regularize
         _z = Tracker.collect(zeros(eltype(x), 3, size(x, 2)))
         prob = ODEProblem{false}(ffjord_, vcat(x, _z), n.tspan, p)
@@ -86,7 +86,7 @@ function (n::TrackedFFJORD{true})(x, p = n.p,
     svcb = SavingCallback(
         (u, t, integrator) -> integrator.EEst * integrator.dt, sv
     )
-    ffjord_ = (u, p, t) -> ffjord(u, p, t, n.re, e, regularize)
+    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, regularize)
     _z = Tracker.collect(zeros(eltype(x), 1, size(x, 2)))
 
     prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)

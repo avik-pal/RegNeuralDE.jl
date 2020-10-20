@@ -22,6 +22,18 @@ function load_mnist(batchsize::Int, transform = cpu)
     )
 end
 
+function load_miniboone(batchsize::Int, path::String, train_test_split::Float64 = 0.8,
+                        transform = cpu)
+    data = Float32.(npzread(path)')
+    total_obs = size(data, 2)
+    train_data, test_data = splitobs(
+        shuffleobs(data), train_test_split
+    )
+
+    return (DataLoader(transform.(train_data), batchsize = batchsize, shuffle = true),
+            DataLoader(transform.(test_data), batchsize = batchsize, shuffle = false))
+end
+
 
 function load_physionet(batchsize::Int, path::String, train_test_split::Float64 = 0.8,
                         transform = cpu)

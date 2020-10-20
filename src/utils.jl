@@ -32,7 +32,7 @@ _convert_tspan(tspan, p) = eltype(p).(tspan)
 
 _convert_tspan(tspan, p::TrackedArray) = Tracker.collect(eltype(p).(tspan))
 
-norm_batched(x::AbstractArray{T, N}) where {T, N} = sqrt.(sum(x .^ 2, dims = N))
+norm_batched(x::AbstractArray) = sqrt.(sum(x .^ 2, dims = 1))
 
 # Running Average Meter
 mutable struct AverageMeter{T}

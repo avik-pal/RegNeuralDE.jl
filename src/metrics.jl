@@ -14,6 +14,18 @@ function accuracy(model, data; batches = length(data))
     return total_correct * 100 / total
 end
 
+function loglikelihood(model, data; batches = length(data))
+    total_loglikelihood = 0.0f0
+    total = 0
+    for (i, x) in enumerate(data)
+        i >= batches && break
+        res = model(x)
+        total_loglikelihood += sum(res[1])
+        total += size(x, 2)
+    end
+    return total_loglikelihood / total
+end
+
 # _get_predicted_class(model::ClassifierNODE, x) = classify(cpu(model(x)))
     
 # _get_predicted_class(model::ClassifierNODE{T}, x) where T<:NFECounterCallbackNeuralODE =
