@@ -1,5 +1,5 @@
 name: MINIBOONE FFJORD TABULAR EXPERIMENT
-log_dir: /home/avik-pal/research/RegNeuralODE.jl/results/mnist_node/
+log_dir: /home/avik-pal/research/RegNeuralODE.jl/results/ffjord_tabular/
 data_path: /home/avik-pal/research/RegNeuralODE.jl/data/miniboone.npy
 seed: 3021
 hyperparameters:

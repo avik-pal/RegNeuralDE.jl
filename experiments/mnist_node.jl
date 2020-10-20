@@ -20,7 +20,7 @@ HIDDEN_DIMS = hparams["hidden_dims"]
 INPUT_DIMS = hparams["input_dims"]
 LR = hparams["lr"]
 EPOCHS = hparams["epochs"]
-EXPERIMENT_LOGDIR = joinpath(config["log_dir"], string(now()))
+EXPERIMENT_LOGDIR = joinpath(config["log_dir"], "$(string(now()))_$REGULARIZE")
 MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 
