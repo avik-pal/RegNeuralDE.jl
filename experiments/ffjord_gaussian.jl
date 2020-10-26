@@ -75,7 +75,9 @@ ffjord = TrackedFFJORD(nn_dynamics |> track, [0.0f0, 1.0f0], REGULARIZE,
                        reltol = 6f-8, abstol = 6f-8,
                        save_start = false) |> track
 
-train_dataloader, test_dataloader = RegNeuralODE.load_multimodel_gaussian(BATCH_SIZE)
+train_dataloader, test_dataloader = load_multimodel_gaussian(
+    BATCH_SIZE, ngaussians=2, nsamples=200
+)
 
 if REGULARIZE
     function loss_function(x, model, p; λ = 1.0f2)
@@ -111,7 +113,7 @@ train_loglikelihood[1] = data(loglikelihood(ffjord, train_dataloader))
 test_loglikelihood[1] = data(loglikelihood(ffjord, test_dataloader))
 @info (train_runtimes[1], inference_runtimes[1], nfe_counts[1], train_loglikelihood[1], test_loglikelihood[1])
 
-opt = ADAM(0.01) # LR)
+opt = ADAM(LR)
 
 @progress for epoch in 1:EPOCHS
     start_time = time()
