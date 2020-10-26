@@ -105,3 +105,28 @@ function load_spiral2d(batchsize::Int, transform = cpu; nspiral = 1000,
             DataLoader(transform.((original_trajectories, original_tp)),
                        batchsize = batchsize, shuffle = true))
 end
+
+
+function load_multimodel_gaussian(batchsize, transform = cpu, train_test_split = 0.8;
+                                  nsamples = 1000, ngaussians = 6, dim = 2,
+                                  radius = 5.0f0, σ = 0.1f0, noise = 0.3f0)
+    samples_per_gaussian = nsamples ÷ ngaussians
+    μ = zeros(Float32, dim)
+    θ = 0
+    X = Array{Float32}(undef, 2, samples_per_gaussian * ngaussians)
+    for i in 1:ngaussians
+        θ += Float32(2π / ngaussians)
+        μ[1] = cos(θ) * radius
+        μ[2] = sin(θ) * radius
+
+        dist = MvNormal(μ, σ)
+        samples = rand(dist, samples_per_gaussian)
+        noise_vec = Float32.(randn(2, samples_per_gaussian)) .* noise
+        X[:, (i - 1) * samples_per_gaussian + 1: i * samples_per_gaussian] = samples + noise_vec
+    end
+
+    X_train, X_test = splitobs(shuffleobs(X), train_test_split)
+
+    return (DataLoader(transform.(X_train), batchsize = batchsize, shuffle = true),
+            DataLoader(transform.(X_test), batchsize = batchsize, shuffle = false))
+end
