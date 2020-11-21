@@ -58,3 +58,28 @@ function update!(am::AverageMeter{T}, val::T) where T
 end
 
 (am::AverageMeter)() = am.sum / am.count
+
+# Pretty Logger
+function table_logger(header::Vector{String})
+    n = length(header)
+    ind_lens = length.(header)
+    span = sum(ind_lens .+ 3) + 1
+    println("=" ^ span)
+    for h in header
+        print("| $h ")
+    end
+    println("|")
+    println("=" ^ span)
+    patterns = ["%$l.6f" for l in ind_lens]
+    fmtrfuncs = generate_formatter.(patterns)
+    function internal_logger(last::Bool, args::Vararg)
+        if last
+            println("=" ^ span)
+            return
+        end
+        for h in [fmtrfunc(arg) for (fmtrfunc, arg) in zip(fmtrfuncs, args)]
+            print("| $h ")
+        end
+        println("|")
+    end
+end

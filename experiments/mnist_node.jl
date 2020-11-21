@@ -1,13 +1,17 @@
-using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, Random, Statistics
-using ProgressLogging, YAML, Dates, BSON
+#--------------------------------------
+## LOAD PACKAGES
+using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker
+using YAML, Dates, BSON, Random, Statistics, Printf
 using CUDA
 using RegNeuralODE: accuracy
 using Flux.Optimise: update!
 using Flux: @functor, glorot_uniform, logitcrossentropy
 using Tracker: TrackedReal, data
 import Base.show
+#--------------------------------------
 
-## Training Parameters
+#--------------------------------------
+## CONFIGURATION
 config_file = joinpath(pwd(), "experiments", "configs", "mnist_node.yml")
 config = YAML.load_file(config_file)
 
@@ -27,7 +31,10 @@ FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 # Create a directory to store the results
 isdir(EXPERIMENT_LOGDIR) || mkpath(EXPERIMENT_LOGDIR)
 cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
+#--------------------------------------
 
+#--------------------------------------
+## NEURAL NETWORK
 # The dynamics of the Neural ODE are time dependent
 struct MLPDynamics{W1, B1, W2, B2}
     weight_1::W1
@@ -48,26 +55,26 @@ function (mlp::MLPDynamics)(x::AbstractMatrix, t::TrackedReal)
     z = mlp.weight_1 * vcat(σ.(x), _t) .+ mlp.bias_1
     return mlp.weight_2 * vcat(σ.(z), _t) .+ mlp.bias_2
 end
+#--------------------------------------
 
-Base.show(io::IO, mlp::MLPDynamics) =
-    print(io, "Time Dependent MLP Dynamics: $(size(mlp.weight_1, 2) - 1) -> $(size(mlp.weight_2, 2) - 1) -> $(size(mlp.weight_2, 1))")
-
-
+#--------------------------------------
+## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> cpu(track(x)))
+train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 
 # Define the models
 mlp_dynamics = MLPDynamics(64, 128)
 
 node = ClassifierNODE(
-    Chain(x -> reshape(x, 784, :), Linear(784, 256, relu), Linear(256, 64)) |> track,
-    TrackedNeuralODE(mlp_dynamics |> track, [0.f0, 1.f0], true,
-                     REGULARIZE, Tsit5(), save_everystep = false,
-                     reltol = 6f-5, abstol = 6f-5, save_start = false),
-    Chain(Linear(64, 10)) |> track
+    Chain(x -> reshape(x, 784, :), Linear(784, 256, relu), Linear(256, 64)) |> track |> gpu,
+    TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
+                     REGULARIZE, Vern7(), save_everystep = false,
+                     reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
+    Chain(Linear(64, 10)) |> track |> gpu
 )
+ps = Flux.trainable(node)
 
-opt = ADAMW(LR, (0.9, 0.99), 1e-5)
+opt = ADAM(LR, (0.9, 0.99))
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, sol, sv = model(x, p1, p2, p3)
@@ -76,17 +83,29 @@ function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     )
 end
 
+function custom_logger(header, trtime, irtime, nfe, train_acc, test_acc)
+    marker = "=" ^ length(header)
+    println(header)
+    @printf("Training Time = %.5f s", trtime)
+end
+#--------------------------------------
+
+#--------------------------------------
+## LOGGING UTILITIES
 nfe_counts = Vector{Float64}(undef, EPOCHS + 1)
 train_accuracies = Vector{Float64}(undef, EPOCHS + 1)
 test_accuracies = Vector{Float64}(undef, EPOCHS + 1)
 train_runtimes = Vector{Float64}(undef, EPOCHS + 1)  # The first value is a dummy value
 inference_runtimes = Vector{Float64}(undef, EPOCHS + 1)
-
 train_runtimes[1] = 0
 
-ps = Flux.trainable(node)
+logger = table_logger(["Iteration", "NFE Count", "Train Accuracy",
+                       "Test Accuracy", "Train Runtime", "Inference Runtime"])
+#--------------------------------------
 
-dummy_data = rand(Float32, 28, 28, 1, 1) |> track
+#--------------------------------------
+## RECORD DETAILS BEFORE TRAINING STARTS
+dummy_data = rand(Float32, 28, 28, 1, BATCH_SIZE) |> track |> gpu
 start_time = time()
 _, sol, _ = node(dummy_data)
 inference_runtimes[1] = time() - start_time
@@ -94,18 +113,26 @@ train_runtimes[1] = 0.0
 nfe_counts[1] = sol.destats.nf
 train_accuracies[1] = accuracy(node, train_dataloader)
 test_accuracies[1] = accuracy(node, test_dataloader)
-@info (train_runtimes[1], inference_runtimes[1], nfe_counts[1], train_accuracies[1], test_accuracies[1])
 
-@progress for epoch in 1:EPOCHS
+logger(false, 0.0, nfe_counts[1], train_accuracies[1], test_accuracies[1],
+       train_runtimes[1], inference_runtimes[1])
+#--------------------------------------
+
+#--------------------------------------
+## TRAINING
+for epoch in 1:EPOCHS
     start_time = time()
 
-    @progress for (i, (x, y)) in enumerate(train_dataloader)
-        gs = Tracker.gradient((p1, p2, p3) -> loss_function(x, y, node, p1, p2, p3), ps...)
+    for (i, (x, y)) in enumerate(train_dataloader)
+        gs = Tracker.gradient(
+            (p1, p2, p3) -> loss_function(x, y, node, p1, p2, p3), ps...
+        )
         for (p, g) in zip(ps, gs)
             length(p) == 0 && continue
             update!(opt, data(p), data(g))
         end
     end
+
     # Record the time per epoch
     train_runtimes[epoch + 1] = time() - start_time
 
@@ -119,9 +146,15 @@ test_accuracies[1] = accuracy(node, test_dataloader)
     train_accuracies[epoch + 1] = accuracy(node, train_dataloader)
     test_accuracies[epoch + 1] = accuracy(node, test_dataloader)
 
-    @info (train_runtimes[epoch + 1], inference_runtimes[epoch + 1], nfe_counts[epoch + 1], train_accuracies[epoch + 1], test_accuracies[epoch + 1])
+    logger(false, epoch, nfe_counts[epoch + 1], train_accuracies[epoch + 1],
+           test_accuracies[epoch + 1], train_runtimes[epoch + 1],
+           inference_runtimes[epoch + 1])
 end
+logger(true)
+#--------------------------------------
 
+#--------------------------------------
+## STORE THE RESULTS
 results = Dict(
     :nfe_counts => nfe_counts,
     :train_accuracies => train_accuracies,
@@ -130,10 +163,7 @@ results = Dict(
     :inference_runtimes => inference_runtimes
 )
 
-BSON.@save MODEL_WEIGHTS Dict(
-    :p1 => node.p1,
-    :p2 => node.p2,
-    :p3 => node.p3
-)
+BSON.@save MODEL_WEIGHTS Flux.params(node)
 
 YAML.write_file(FILENAME, results)
+#--------------------------------------
