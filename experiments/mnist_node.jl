@@ -63,14 +63,14 @@ end
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 
 # Define the models
-mlp_dynamics = MLPDynamics(64, 128)
+mlp_dynamics = MLPDynamics(784, 100)
 
 node = ClassifierNODE(
-    Chain(x -> reshape(x, 784, :), Linear(784, 256, relu), Linear(256, 64)) |> track |> gpu,
+    Chain(x -> reshape(x, 784, :)) |> track |> gpu,
     TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
                      REGULARIZE, Vern7(), save_everystep = false,
                      reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
-    Chain(Linear(64, 10)) |> track |> gpu
+    Chain(Linear(784, 10)) |> track |> gpu
 )
 ps = Flux.trainable(node)
 
@@ -81,12 +81,6 @@ function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     return logitcrossentropy(pred, y) +(
         REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     )
-end
-
-function custom_logger(header, trtime, irtime, nfe, train_acc, test_acc)
-    marker = "=" ^ length(header)
-    println(header)
-    @printf("Training Time = %.5f s", trtime)
 end
 #--------------------------------------
 
@@ -106,9 +100,9 @@ logger = table_logger(["Iteration", "NFE Count", "Train Accuracy",
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
 dummy_data = rand(Float32, 28, 28, 1, BATCH_SIZE) |> track |> gpu
-start_time = time()
+stime = time()
 _, sol, _ = node(dummy_data)
-inference_runtimes[1] = time() - start_time
+inference_runtimes[1] = time() - stime
 train_runtimes[1] = 0.0
 nfe_counts[1] = sol.destats.nf
 train_accuracies[1] = accuracy(node, train_dataloader)
@@ -121,6 +115,11 @@ logger(false, 0.0, nfe_counts[1], train_accuracies[1], test_accuracies[1],
 #--------------------------------------
 ## TRAINING
 for epoch in 1:EPOCHS
+    # Learning Rate Scheduler
+    if epoch == 60 || epoch == 100 || epoch == 140
+        opt.eta /= 10
+    end
+
     start_time = time()
 
     for (i, (x, y)) in enumerate(train_dataloader)
@@ -163,7 +162,8 @@ results = Dict(
     :inference_runtimes => inference_runtimes
 )
 
-BSON.@save MODEL_WEIGHTS Flux.params(node)
+weights = Flux.params(node) .|> cpu .|> untrack
+BSON.@save MODEL_WEIGHTS weights
 
 YAML.write_file(FILENAME, results)
 #--------------------------------------

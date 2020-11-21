@@ -70,7 +70,7 @@ function table_logger(header::Vector{String})
     end
     println("|")
     println("=" ^ span)
-    patterns = ["%$l.6f" for l in ind_lens]
+    patterns = ["%$l.4f" for l in ind_lens]
     fmtrfuncs = generate_formatter.(patterns)
     function internal_logger(last::Bool, args::Vararg)
         if last
