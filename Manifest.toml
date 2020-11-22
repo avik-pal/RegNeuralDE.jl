@@ -236,7 +236,9 @@ uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 
 [[DiffEqBase]]
 deps = ["ArrayInterface", "ChainRulesCore", "DataStructures", "Distributed", "DocStringExtensions", "FunctionWrappers", "IterativeSolvers", "IteratorInterfaceExtensions", "LabelledArrays", "LinearAlgebra", "Logging", "MuladdMacro", "Parameters", "Printf", "RecipesBase", "RecursiveArrayTools", "RecursiveFactorization", "Requires", "Roots", "SparseArrays", "StaticArrays", "Statistics", "SuiteSparse", "TableTraits", "Tables", "TreeViews", "ZygoteRules"]
-path = "/mnt/research/DiffEqBase"
+git-tree-sha1 = "d937977f7dcef85c96522e89cf4e7f9be25423f1"
+repo-rev = "ap/fix_gpu_regnode"
+repo-url = "https://github.com/avik-pal/DiffEqBase.jl"
 uuid = "2b5f629d-d688-5b77-993f-72d75c75574e"
 version = "6.48.2"
 

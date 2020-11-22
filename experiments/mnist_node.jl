@@ -51,7 +51,7 @@ function MLPDynamics(in::Integer, hidden::Integer)
 end
 
 function (mlp::MLPDynamics)(x::AbstractMatrix, t::TrackedReal)
-    _t = Tracker.collect(ones(eltype(x), 1, size(x, 2))) .* t
+    _t = ones(Float32, 1, size(x, 2)) .* t
     z = mlp.weight_1 * vcat(σ.(x), _t) .+ mlp.bias_1
     return mlp.weight_2 * vcat(σ.(z), _t) .+ mlp.bias_2
 end
@@ -74,7 +74,7 @@ node = ClassifierNODE(
 )
 ps = Flux.trainable(node)
 
-opt = ADAM(LR, (0.9, 0.99))
+opt = Momentum(0.1f0, 0.9f0) # ADAM(LR, (0.9, 0.99))
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, sol, sv = model(x, p1, p2, p3)
@@ -101,15 +101,27 @@ logger = table_logger(["Iteration", "NFE Count", "Train Accuracy",
 ## RECORD DETAILS BEFORE TRAINING STARTS
 dummy_data = rand(Float32, 28, 28, 1, BATCH_SIZE) |> track |> gpu
 stime = time()
-_, sol, _ = node(dummy_data)
+_, _sol, _ = node(dummy_data)
 inference_runtimes[1] = time() - stime
 train_runtimes[1] = 0.0
-nfe_counts[1] = sol.destats.nf
+nfe_counts[1] = _sol.destats.nf
 train_accuracies[1] = accuracy(node, train_dataloader)
 test_accuracies[1] = accuracy(node, test_dataloader)
 
 logger(false, 0.0, nfe_counts[1], train_accuracies[1], test_accuracies[1],
        train_runtimes[1], inference_runtimes[1])
+#--------------------------------------
+
+#--------------------------------------
+## WARMSTART THE GRADIENT COMPUTATION
+_ = Tracker.gradient(
+    (p1, p2, p3) -> loss_function(
+        rand(Float32, 28, 28, 1, 1) |> gpu |> track,
+	ones(Float32, 1, 1) |> gpu |> track,
+	node, p1, p2, p3
+    ),
+    ps...
+)
 #--------------------------------------
 
 #--------------------------------------
@@ -119,7 +131,6 @@ for epoch in 1:EPOCHS
     if epoch == 60 || epoch == 100 || epoch == 140
         opt.eta /= 10
     end
-
     start_time = time()
 
     for (i, (x, y)) in enumerate(train_dataloader)

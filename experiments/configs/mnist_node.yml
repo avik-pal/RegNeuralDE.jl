@@ -2,9 +2,9 @@ name: MNIST Vanilla Neural ODE
 log_dir: /home/avik-pal/research/RegNeuralODE.jl/results/mnist_node/
 seed: 3021
 hyperparameters:
-    batch_size: 256
-    regularize: true
+    batch_size: 512
+    regularize: false 
     hidden_dims: 200
     input_dims: 784
-    lr: 0.1
+    lr: 0.0004
     epochs: 160
