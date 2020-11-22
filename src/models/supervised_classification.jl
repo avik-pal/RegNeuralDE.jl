@@ -6,7 +6,7 @@ struct ClassifierNODE{L1, L2, L3, N, P1, P2, T}
     p1::T
     p2::T
     p3::T
-    
+
     function ClassifierNODE2(preode, node, postode)
         p1, re1 = Flux.destructure(preode)
         p2 = node.p
@@ -19,8 +19,8 @@ end
 
 Flux.trainable(m::ClassifierNODE) = (m.p1, m.p2, m.p3)
 
-function (m::ClassifierNODE{N, P1, P2, T, L1, L2, L3})(
-        x, p1 = m.p1, p2 = m.p2, p3 = m.p3) where {N, P1, P2, T, L1, L2, L3}
+function (m::ClassifierNODE{L1, L2, L3})(x, p1 = m.p1, p2 = m.p2,
+                                         p3 = m.p3) where {L1, L2, L3}
     preode = m.preode(p1) :: L1
     x = preode(x)
     x, nfe, sv = m.node(x, p2)

@@ -74,7 +74,7 @@ node = ClassifierNODE(
 )
 ps = Flux.trainable(node)
 
-opt = Momentum(0.1f0, 0.9f0) # ADAM(LR, (0.9, 0.99))
+opt = ADAM(0.01f0, (0.9f0, 0.99f0))
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, _, sv = model(x, p1, p2, p3)
