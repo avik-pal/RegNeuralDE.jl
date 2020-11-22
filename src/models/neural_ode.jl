@@ -28,7 +28,7 @@ function (n::TrackedNeuralODE{false})(x, p = n.p)
                 callback = nothing, n.kwargs...)
     res = diffeqsol_to_trackedarray(sol) :: typeof(x)
 
-    return res, sol, nothing
+    return res, sol.destats.nf, nothing
 end
 
 
@@ -47,6 +47,7 @@ function (n::TrackedNeuralODE{true})(x, p = n.p)
     sol = solve(prob, n.args...; sensealg = SensitivityADPassThrough(),
                 callback = svcb, n.kwargs...)
     res = diffeqsol_to_trackedarray(sol) :: typeof(x)
+    nfe = sol.destats.nf :: Int
 
-    return res, sol, sv
+    return res, nfe, sv
 end

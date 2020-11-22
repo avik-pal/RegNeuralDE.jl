@@ -43,7 +43,7 @@ struct MLPDynamics{W1, B1, W2, B2}
     bias_2::B2
 end
 
-Flux.@functor MLPDynamics
+@functor MLPDynamics
 
 function MLPDynamics(in::Integer, hidden::Integer)
     return MLPDynamics(glorot_uniform(hidden, in + 1), zeros(Float32, hidden),
@@ -66,18 +66,18 @@ train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 mlp_dynamics = MLPDynamics(784, 100)
 
 node = ClassifierNODE(
-    Chain(x -> reshape(x, 784, :)) |> track |> gpu,
+    x -> reshape(x, 784, :),
     TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
                      REGULARIZE, Vern7(), save_everystep = false,
                      reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
-    Chain(Linear(784, 10)) |> track |> gpu
+    Linear(784, 10) |> track |> gpu
 )
 ps = Flux.trainable(node)
 
 opt = Momentum(0.1f0, 0.9f0) # ADAM(LR, (0.9, 0.99))
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
-    pred, sol, sv = model(x, p1, p2, p3)
+    pred, _, sv = model(x, p1, p2, p3)
     return logitcrossentropy(pred, y) +(
         REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     )
@@ -101,10 +101,10 @@ logger = table_logger(["Iteration", "NFE Count", "Train Accuracy",
 ## RECORD DETAILS BEFORE TRAINING STARTS
 dummy_data = rand(Float32, 28, 28, 1, BATCH_SIZE) |> track |> gpu
 stime = time()
-_, _sol, _ = node(dummy_data)
+_, _nfe, _ = node(dummy_data)
 inference_runtimes[1] = time() - stime
 train_runtimes[1] = 0.0
-nfe_counts[1] = _sol.destats.nf
+nfe_counts[1] = _nfe
 train_accuracies[1] = accuracy(node, train_dataloader)
 test_accuracies[1] = accuracy(node, test_dataloader)
 
@@ -117,8 +117,8 @@ logger(false, 0.0, nfe_counts[1], train_accuracies[1], test_accuracies[1],
 _ = Tracker.gradient(
     (p1, p2, p3) -> loss_function(
         rand(Float32, 28, 28, 1, 1) |> gpu |> track,
-	ones(Float32, 1, 1) |> gpu |> track,
-	node, p1, p2, p3
+	    ones(Float32, 1, 1) |> gpu |> track,
+	    node, p1, p2, p3
     ),
     ps...
 )
@@ -148,9 +148,9 @@ for epoch in 1:EPOCHS
 
     # Record the NFE count
     start_time = time()
-    _, sol, _ = node(dummy_data)
+    _, nfe, _ = node(dummy_data)
     inference_runtimes[epoch + 1] = time() - start_time
-    nfe_counts[epoch + 1] = sol.destats.nf
+    nfe_counts[epoch + 1] = nfe
 
     # Test and Train Accuracy
     train_accuracies[epoch + 1] = accuracy(node, train_dataloader)
