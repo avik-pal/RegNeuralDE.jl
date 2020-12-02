@@ -32,48 +32,55 @@ function _ffjord(u, p, t, re, e, regularize)
         mz, back = Tracker.forward(m, z, t)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
-        return Tracker.collect(cat(mz, -trace_jac, sum(abs2.(mz), dims = 1),
-                                   norm_batched(eJ) .^ 2, dims = 1))
+        return vcat(mz, -trace_jac, sum(abs2.(mz), dims = 1),
+                    norm_batched(eJ) .^ 2)
     else
-        z = u[1:end - 1, :]
+        z = u[1:end-1, :]
         mz, back = Tracker.forward(m, z, t)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
-        return Tracker.collect(cat(mz, -trace_jac, dims = 1))
+        return vcat(mz, -trace_jac)
     end
 end
 
 function (n::TrackedFFJORD{false})(x, p = n.p,
-                                   e = Tracker.collect(randn(eltype(x), size(x)));
+                                   e = CUDA.randn(Float32, size(x)) |> track;
                                    regularize = false)
     pz = n.basedist
     sense = SensitivityADPassThrough()
+    tspan = _convert_tspan(n.tspan, p)
     ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, regularize)
     if regularize
-        _z = Tracker.collect(zeros(eltype(x), 3, size(x, 2)))
-        prob = ODEProblem{false}(ffjord_, vcat(x, _z), n.tspan, p)
+        _z = CUDA.zeros(Float32, 3, size(x, 2)) |> track
+
+        prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
         sol = solve(prob, n.args...; sensealg = sense, n.kwargs...)
-        pred = sol[:, :, end]
-        z = Tracker.collect(pred[1:end - 3, :])
-        delta_logp = reshape(Tracker.collect(pred[end - 2, :]), 1, size(pred, 2))
-        λ₁ = Tracker.collect(pred[end - 1, :])
-        λ₂ = Tracker.collect(pred[end, :])
+
+        pred = sol.u[1]
+        z = pred[1:end-3, :]
+        delta_logp = pred[end-2:end-2, :]
+        λ₁ = pred[end-1, :]
+        λ₂ = pred[end, :]
     else
-        _z = Tracker.collect(zeros(eltype(x), 1, size(x, 2)))
-        prob = ODEProblem{false}(ffjord_, vcat(x, _z), n.tspan, p)
+        _z = CUDA.zeros(Float32, 1, size(x, 2)) |> track
+
+        prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
         sol = solve(prob, n.args...; sensealg = sense, n.kwargs...)
-        pred = sol[:, :, end]
-        z = Tracker.collect(pred[1:end - 1, :])
-        delta_logp = reshape(Tracker.collect(pred[end, :]), 1, size(pred, 2))
-        λ₁ = λ₂ = Tracker.collect(_z[1, :])
+
+        pred = sol.u[1]
+        z = pred[1:end-1, :]
+        delta_logp = pred[end:end, :]
+        λ₁ = λ₂ = _z[1, :]
     end
+
+    # return z, nothing
 
     # logpdf promotes the type to Float64 by default
     # This function is type unstable when used with Tracker
-    logpz = reshape(logpdf(pz, z), 1, size(x, 2))
+    logpz = reshape(logpdf(pz, z |> cpu), 1, :) |> gpu
     logpx = logpz .- delta_logp
 
-    return logpx, λ₁, λ₂, sol
+    return logpx, λ₁, λ₂, sol.destats.nf
 end
 
 function (n::TrackedFFJORD{true})(x, p = n.p,
@@ -86,20 +93,20 @@ function (n::TrackedFFJORD{true})(x, p = n.p,
     svcb = SavingCallback(
         (u, t, integrator) -> integrator.EEst * integrator.dt, sv
     )
-    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, regularize)
-    _z = Tracker.collect(zeros(eltype(x), 1, size(x, 2)))
+    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, false)
+    _z = CUDA.zeros(Float32, 1, size(x, 2)) |> track
 
     prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
     sol = solve(prob, n.args...; sensealg = sense, callback = svcb,
                 n.kwargs...)
-    pred = sol[:, :, end]
-    z = Tracker.collect(pred[1:end - 1, :])
-    delta_logp = reshape(Tracker.collect(pred[end, :]), 1, size(pred, 2))
+    pred = sol.u[1]
+    z = pred[1:end-1, :]
+    delta_logp = pred[end:end, :]
 
     # logpdf promotes the type to Float64 by default
     # This function is type unstable when used with Tracker
-    logpz = reshape(logpdf(pz, z), 1, size(x, 2))
+    logpz = reshape(logpdf(pz, z |> cpu), 1, :) |> gpu
     logpx = logpz .- delta_logp
 
-    return logpx, sv, sol
+    return logpx, sv, sol.destats.nf
 end

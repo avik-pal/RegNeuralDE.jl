@@ -12,9 +12,6 @@ Flux.functor(::Type{<:TDChain}, c) = c.layers, ls -> TDChain(ls...)
 applytdchain(::Tuple{}, x, t) = x
 applytdchain(fs::Tuple, x, t) = applytdchain(Base.tail(fs), first(fs)(vcat(x, t)), t)
 
-# Inference for Tracker fails if using the default Flux layers
-# https://github.com/FluxML/Tracker.jl/issues/84. As a temporary fix use
-# the layers exported from RegNeuralODE
 function (c::TDChain)(x::AbstractMatrix, t)
     _t = similar(x, 1, size(x, 2))
     fill!(_t, t)
@@ -38,27 +35,6 @@ end
 
 
 # Some Common Network Layers
-
-## This layer doesn't have bias. Tracker cause inference issues with Dense
-struct Linear{W, S}
-    weight::W
-    σ::S
-end
-
-Linear(W) = Linear(W, identity)
-
-Linear(in::Integer, out::Integer, σ = identity; initW = Flux.glorot_uniform) =
-    Linear(initW(out, in), σ)
-
-Flux.@functor Linear
-
-(l::Linear)(x::AbstractArray) = l.σ.(l.weight * x)
-
-function Base.show(io::IO, l::Linear)
-    print(io, "Linear(", size(l.weight, 2), ", ", size(l.weight, 1))
-    l.σ == identity || print(io, ", ", l.σ)
-    print(io, ")")
-end
 
 ## Recognition RNN for mapping from time series data to a latent vector
 struct RecognitionRNN{P, Q, R}

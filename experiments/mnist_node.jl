@@ -80,7 +80,7 @@ opt = ADAM(0.01f0, (0.9f0, 0.99f0))
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, _, sv = model(x, p1, p2, p3)
-    return logitcrossentropy(pred, y) +(
+    return logitcrossentropy(pred, y) + (
         REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     )
 end
