@@ -1,7 +1,7 @@
 # Classification Network
 struct ClassifierNODE{L1, L2, L3, P1, P2, T}
     preode::P1
-    node::N
+    node::L2
     postode::P2
     p1::T
     p2::T

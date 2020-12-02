@@ -8,6 +8,8 @@ using Flux.Optimise: update!
 using Flux: @functor, glorot_uniform, logitcrossentropy
 using Tracker: TrackedReal, data
 import Base.show
+
+CUDA.allowscalar(false)
 #--------------------------------------
 
 #--------------------------------------
@@ -51,9 +53,9 @@ function MLPDynamics(in::Integer, hidden::Integer)
 end
 
 function (mlp::MLPDynamics)(x::AbstractMatrix, t::TrackedReal)
-    _t = ones(Float32, 1, size(x, 2)) .* t
+    _t = CUDA.ones(Float32, 1, size(x, 2)) .* t
     z = mlp.weight_1 * vcat(σ.(x), _t) .+ mlp.bias_1
-    return mlp.weight_2 * vcat(σ.(z), _t) .+ mlp.bias_2
+    return σ.(mlp.weight_2 * vcat(σ.(z), _t) .+ mlp.bias_2)
 end
 #--------------------------------------
 
@@ -63,14 +65,14 @@ end
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 
 # Define the models
-mlp_dynamics = MLPDynamics(784, 100)
+mlp_dynamics = MLPDynamics(256, 100)
 
 node = ClassifierNODE(
-    x -> reshape(x, 784, :),
+    Chain(x -> reshape(x, 784, :), Linear(784, 256)),
     TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
                      REGULARIZE, Vern7(), save_everystep = false,
                      reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
-    Linear(784, 10) |> track |> gpu
+    Linear(256, 10) |> track |> gpu
 )
 ps = Flux.trainable(node)
 
