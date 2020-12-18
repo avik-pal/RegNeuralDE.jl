@@ -17,7 +17,9 @@ CUDA.allowscalar(false)
 config_file = joinpath(pwd(), "experiments", "configs", "mnist_node.yml")
 config = YAML.load_file(config_file)
 
-Random.seed!(config["seed"])
+# Random.seed!(config["seed"])
+println("Not setting a seed! Record the current seed")
+println(Random.default_rng().seed)
 
 hparams = config["hyperparameters"]
 BATCH_SIZE = hparams["batch_size"]
@@ -38,24 +40,19 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 #--------------------------------------
 ## NEURAL NETWORK
 # The dynamics of the Neural ODE are time dependent
-struct MLPDynamics{W1, B1, W2, B2}
-    weight_1::W1
-    bias_1::B1
-    weight_2::W2
-    bias_2::B2
+struct MLPDynamics{D1, D2}
+    dense_1::D1
+    dense_2::D2
 end
 
 @functor MLPDynamics
 
-function MLPDynamics(in::Integer, hidden::Integer)
-    return MLPDynamics(glorot_uniform(hidden, in + 1), zeros(Float32, hidden),
-                       glorot_uniform(in, hidden + 1), zeros(Float32, in))
-end
+MLPDynamics(in::Integer, hidden::Integer) =
+    MLPDynamics(Dense(in + 1, hidden, σ), Dense(hidden + 1, in, σ))
 
 function (mlp::MLPDynamics)(x::AbstractMatrix, t::TrackedReal)
     _t = CUDA.ones(Float32, 1, size(x, 2)) .* t
-    z = mlp.weight_1 * vcat(σ.(x), _t) .+ mlp.bias_1
-    return σ.(mlp.weight_2 * vcat(σ.(z), _t) .+ mlp.bias_2)
+    return mlp.dense_2(vcat(mlp.dense_1(vcat(σ.(x), _t)), _t))
 end
 #--------------------------------------
 
@@ -65,18 +62,18 @@ end
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 
 # Define the models
-mlp_dynamics = MLPDynamics(256, 100)
+mlp_dynamics = MLPDynamics(784, 100)
 
 node = ClassifierNODE(
-    Chain(x -> reshape(x, 784, :), Linear(784, 256)),
+    Chain(x -> reshape(x, 784, :)),
     TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
                      REGULARIZE, Vern7(), save_everystep = false,
                      reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
-    Linear(256, 10) |> track |> gpu
+    Linear(768, 10) |> track |> gpu
 )
 ps = Flux.trainable(node)
 
-opt = ADAM(0.01f0, (0.9f0, 0.99f0))
+opt = Momentum(LR, 0.9f0)
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, _, sv = model(x, p1, p2, p3)

@@ -26,9 +26,13 @@ function (n::TrackedNeuralODE{false})(x, p = n.p)
 
     sol = solve(prob, n.args...; sensealg = SensitivityADPassThrough(),
                 callback = nothing, n.kwargs...)
+    
+    # cat doesn't preserve types
+    # res = diffeqsol_to_trackedarray(sol) :: TrackedArray{Float32, 3, CuArray{Float32, 3}}
     res = diffeqsol_to_trackedarray(sol) :: typeof(x)
+    nfe = sol.destats.nf :: Int
 
-    return res, sol.destats.nf, nothing
+    return res, nfe, nothing
 end
 
 
@@ -46,6 +50,9 @@ function (n::TrackedNeuralODE{true})(x, p = n.p)
 
     sol = solve(prob, n.args...; sensealg = SensitivityADPassThrough(),
                 callback = svcb, n.kwargs...)
+
+    # cat doesn't preserve types
+    # res = diffeqsol_to_trackedarray(sol) :: TrackedArray{Float32, 3, CuArray{Float32, 3}}
     res = diffeqsol_to_trackedarray(sol) :: typeof(x)
     nfe = sol.destats.nf :: Int
 
