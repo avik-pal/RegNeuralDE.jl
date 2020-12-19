@@ -67,17 +67,19 @@ mlp_dynamics = MLPDynamics(784, 100)
 node = ClassifierNODE(
     Chain(x -> reshape(x, 784, :)),
     TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
-                     REGULARIZE, Vern7(), save_everystep = false,
+                     REGULARIZE, Tsit5(), save_everystep = false,
                      reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
-    Linear(768, 10) |> track |> gpu
+    Dense(784, 10) |> track |> gpu
 )
 ps = Flux.trainable(node)
 
 opt = Momentum(LR, 0.9f0)
+# opt = Flux.Optimise.Optimiser(ExpDecay(0.1f0, 0.5f0, 10000, 1f-2), Descent(0.1f0))
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, _, sv = model(x, p1, p2, p3)
-    return logitcrossentropy(pred, y) + (
+    return Flux.Losses.logitcrossentropy(pred, y) + 0.00001f0 * (
+        sum(abs2, p1) + sum(abs2, p2) + sum(abs2, p3)) + (
         REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     )
 end
@@ -113,11 +115,13 @@ logger(false, 0.0, nfe_counts[1], train_accuracies[1], test_accuracies[1],
 
 #--------------------------------------
 ## WARMSTART THE GRADIENT COMPUTATION
+y_ = zeros(Float32, 10, 1)
+y_[1, 1] = 1.0
 _ = Tracker.gradient(
     (p1, p2, p3) -> loss_function(
         rand(Float32, 28, 28, 1, 1) |> gpu |> track,
-	    ones(Float32, 1, 1) |> gpu |> track,
-	    node, p1, p2, p3
+	y_ |> gpu |> track,
+	node, p1, p2, p3
     ),
     ps...
 )
@@ -138,7 +142,9 @@ for epoch in 1:EPOCHS
         )
         for (p, g) in zip(ps, gs)
             length(p) == 0 && continue
-            update!(opt, data(p), data(g))
+            g = data(g)
+	    any(isnan.(g)) && error("NaN Gradient Detected")
+	    update!(opt, data(p), g)
         end
     end
 

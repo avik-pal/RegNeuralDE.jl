@@ -37,6 +37,6 @@ include("losses.jl")
 export load_mnist, load_physionet, load_spiral2d, load_miniboone, load_multimodel_gaussian
 export TrackedNeuralODE, ClassifierNODE, TDChain, RecognitionRNN,
        TrackedFFJORD
-export track, untrack, table_logger
+export track, untrack, table_logger, solution
 
 end

@@ -24,7 +24,7 @@ function diffeqsol_to_cuarray(x)
 end
 
 function diffeqsol_to_trackedarray(x)
-    xarr = x.u[1]
+    xarr = x.u[end]
     return reshape(xarr, size(xarr)[1:2])
 end
 

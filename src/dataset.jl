@@ -37,8 +37,13 @@ end
 
 function load_physionet(batchsize::Int, path::String, train_test_split::Float64 = 0.8,
                         transform = cpu)
-    BSON.@load path data
-    total_obs = size(data[:observed_data])[end]
+    data = BSON.load(path)[:dataset]
+    for (key, value) in data
+        ndims(value) == 1 && continue
+        data[key] = permutedims(value, (3, 2, 1))
+    end
+
+    total_obs = size(data["observed_data"])[end]
     train_idx, test_idx = splitobs(
         shuffleobs(collect(1:total_obs)), train_test_split
     )
@@ -47,13 +52,13 @@ function load_physionet(batchsize::Int, path::String, train_test_split::Float64 
     #                          :data_to_predict]
     train_data = []
     test_data = []
-    for key in [:observed_data, :observed_mask, :mask_predicted_data, :data_to_predict]
+    for key in ["observed_data", "observed_mask", "mask_predicted_data", "data_to_predict"]
         push!(train_data, data[key][:, :, train_idx])
         push!(test_data, data[key][:, :, test_idx])
     end
-    for key in [:observed_tp, :tp_to_predict]
-        push!(train_data, data[key][:, train_idx])
-        push!(test_data, data[key][:, test_idx])        
+    for key in ["observed_tp", "tp_to_predict"]
+        push!(train_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(train_idx))), 
+        push!(test_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(test_idx)))
     end
     return (DataLoader(transform.(train_data)..., batchsize = batchsize, shuffle = true),
             DataLoader(transform.(test_data)..., batchsize = batchsize, shuffle = true))

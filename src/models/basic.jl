@@ -19,7 +19,7 @@ function (c::TDChain)(x::AbstractMatrix, t)
 end
 
 function (c::TDChain)(x::AbstractMatrix, t::TrackedReal)
-    _t = Tracker.collect(ones(eltype(x), 1, size(x, 2))) .* t
+    _t = CUDA.ones(Float32, 1, size(x, 2)) .* t
     return applytdchain(c.layers, x, _t)
 end
 
