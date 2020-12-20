@@ -64,24 +64,37 @@ end
 (am::AverageMeter)() = am.sum / am.count
 
 # Pretty Logger
-function table_logger(header::Vector{String})
-    n = length(header)
-    ind_lens = length.(header)
+function table_logger(header::Vector{String}, record::Vector{String} = [])
+    n = length(header) + length(record)
+    ind_lens = vcat(length.(header), length.(record))
     span = sum(ind_lens .+ 3) + 1
     println("=" ^ span)
-    for h in header
+    for h in vcat(header, record)
         print("| $h ")
     end
     println("|")
     println("=" ^ span)
+
+    avg_meters = Dict{String, AverageMeter}(
+        rec => AverageMeter() for rec in record
+    )
+
     patterns = ["%$l.4f" for l in ind_lens]
     fmtrfuncs = generate_formatter.(patterns)
-    function internal_logger(last::Bool, args::Vararg)
+    function internal_logger(last::Bool, records::Dict, args::Vararg)
+        if length(records) > 0
+            for (rec, val) in records
+                update!(avg_meters[rec], val)
+            end
+            return
+        end
         if last
             println("=" ^ span)
             return
         end
-        for h in [fmtrfunc(arg) for (fmtrfunc, arg) in zip(fmtrfuncs, args)]
+        for h in [fmtrfunc(arg) for (fmtrfunc, arg) in zip(
+            fmtrfuncs, vcat([args...], [avg_meters[rec]() for rec in record])
+        )]
             print("| $h ")
         end
         println("|")

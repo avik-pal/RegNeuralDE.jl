@@ -62,25 +62,31 @@ end
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 
 # Define the models
-mlp_dynamics = MLPDynamics(256, 100)
+mlp_dynamics = MLPDynamics(784, 100)
 
 node = ClassifierNODE(
-    Chain(x -> reshape(x, 784, :), Dense(784, 256)) |> track |> gpu,
+    Chain(x -> reshape(x, 784, :)) |> track |> gpu,
     TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
                      REGULARIZE, Vern7(), save_everystep = false,
                      reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
-    Dense(256, 10) |> track |> gpu
+    Dense(784, 10) |> track |> gpu
 )
 ps = Flux.trainable(node)
 
-opt = Momentum(0.1f0, 0.9f0)
+opt = ADAM(0.1f0)
 
-function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
+function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
     pred, _, sv = model(x, p1, p2, p3)
-    return Flux.Losses.logitcrossentropy(pred, y) + 0.00001f0 * (
-        sum(abs2, p1) + sum(abs2, p2) + sum(abs2, p3)) + (
-        REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
-    )
+    cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
+    reg = REGULARIZE ? mean(sv.saveval) : zero(eltype(pred))
+    if !notrack
+        ce_un = cross_entropy |> untrack
+        reg_un = reg |> untrack
+        logger(false, Dict("Total Loss" => ce_un + reg_un,
+                           "Cross Entropy Loss" => ce_un,
+                           "Regularization" => reg_un))
+    end
+    return cross_entropy + λ * reg
 end
 #--------------------------------------
 
@@ -93,8 +99,9 @@ train_runtimes = Vector{Float64}(undef, EPOCHS + 1)  # The first value is a dumm
 inference_runtimes = Vector{Float64}(undef, EPOCHS + 1)
 train_runtimes[1] = 0
 
-logger = table_logger(["Iteration", "NFE Count", "Train Accuracy",
-                       "Test Accuracy", "Train Runtime", "Inference Runtime"])
+logger = table_logger(["Epoch", "NFE Count", "Train Accuracy",
+                       "Test Accuracy", "Train Runtime", "Inference Runtime"],
+                      ["Total Loss", "Cross Entropy Loss", "Regularization"])
 #--------------------------------------
 
 #--------------------------------------
@@ -108,8 +115,8 @@ nfe_counts[1] = _nfe
 train_accuracies[1] = accuracy(node, train_dataloader)
 test_accuracies[1] = accuracy(node, test_dataloader)
 
-logger(false, 0.0, nfe_counts[1], train_accuracies[1], test_accuracies[1],
-       train_runtimes[1], inference_runtimes[1])
+logger(false, Dict(), 0.0, nfe_counts[1], train_accuracies[1],
+       test_accuracies[1], train_runtimes[1], inference_runtimes[1])
 #--------------------------------------
 
 #--------------------------------------
@@ -119,8 +126,8 @@ y_[1, 1] = 1.0
 _ = Tracker.gradient(
     (p1, p2, p3) -> loss_function(
         rand(Float32, 28, 28, 1, 1) |> gpu |> track,
-	y_ |> gpu |> track,
-	node, p1, p2, p3
+	    y_ |> gpu |> track,
+	    node, p1, p2, p3; notrack = true
     ),
     ps...
 )
@@ -142,8 +149,8 @@ for epoch in 1:EPOCHS
         for (p, g) in zip(ps, gs)
             length(p) == 0 && continue
             g = data(g)
-	    any(isnan.(g)) && error("NaN Gradient Detected")
-	    update!(opt, data(p), g)
+	        # any(isnan.(g)) && error("NaN Gradient Detected")
+	        update!(opt, data(p), g)
         end
     end
 
@@ -160,9 +167,9 @@ for epoch in 1:EPOCHS
     train_accuracies[epoch + 1] = accuracy(node, train_dataloader)
     test_accuracies[epoch + 1] = accuracy(node, test_dataloader)
 
-    logger(false, epoch, nfe_counts[epoch + 1], train_accuracies[epoch + 1],
-           test_accuracies[epoch + 1], train_runtimes[epoch + 1],
-           inference_runtimes[epoch + 1])
+    logger(false, Dict(), epoch, nfe_counts[epoch + 1],
+           train_accuracies[epoch + 1], test_accuracies[epoch + 1],
+           train_runtimes[epoch + 1], inference_runtimes[epoch + 1])
 end
 logger(true)
 #--------------------------------------
