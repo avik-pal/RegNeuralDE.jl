@@ -3,21 +3,23 @@ function load_mnist(batchsize::Int, transform = cpu)
     onehot(labels_raw) = convertlabel(LabelEnc.OneOfK, labels_raw,
                                       LabelEnc.NativeLabels(collect(0:9)))
     # Load MNIST
-    imgs, labels_raw = MNIST.traindata();
+    imgs, labels_raw = MNIST.traindata()
+    imgs = permutedims(imgs, (2, 1, 3))
     # Process images into (H,W,C,BS) batches
-    x_train_data = Float32.(reshape(imgs, size(imgs,1), size(imgs,2), 1, size(imgs,3)))
+    x_train_data = Float32.(reshape(imgs, 28, 28, 1, size(imgs, 3)))
     y_train_data = onehot(labels_raw)
     # Load MNIST Test
-    imgs, labels_raw = MNIST.testdata();
+    imgs, labels_raw = MNIST.testdata()
+    imgs = permutedims(imgs, (2, 1, 3))
     # Process images into (H,W,C,BS) batches
-    x_test_data = Float32.(reshape(imgs, size(imgs,1), size(imgs,2), 1, size(imgs,3)))
+    x_test_data = Float32.(reshape(imgs, 28, 28, 1, size(imgs, 3)))
     y_test_data = onehot(labels_raw)
     return (
         # Use Flux's DataLoader to automatically minibatch and shuffle the data
-        DataLoader(transform.(collect.((x_train_data, y_train_data)));
+        DataLoader(transform.((x_train_data, y_train_data));
                    batchsize = batchsize, shuffle = true),
         # Don't shuffle the test data
-        DataLoader(transform.(collect.((x_test_data, y_test_data)))...;
+        DataLoader(transform.((x_test_data, y_test_data));
                    batchsize = batchsize, shuffle = false)
     )
 end
@@ -60,8 +62,8 @@ function load_physionet(batchsize::Int, path::String, train_test_split::Float64 
         push!(train_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(train_idx))), 
         push!(test_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(test_idx)))
     end
-    return (DataLoader(transform.(train_data)..., batchsize = batchsize, shuffle = true),
-            DataLoader(transform.(test_data)..., batchsize = batchsize, shuffle = true))
+    return (DataLoader(transform.(train_data), batchsize = batchsize, shuffle = true),
+            DataLoader(transform.(test_data), batchsize = batchsize, shuffle = true))
 end
 
 

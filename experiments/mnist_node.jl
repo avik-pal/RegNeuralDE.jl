@@ -62,19 +62,18 @@ end
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 
 # Define the models
-mlp_dynamics = MLPDynamics(784, 100)
+mlp_dynamics = MLPDynamics(256, 100)
 
 node = ClassifierNODE(
-    Chain(x -> reshape(x, 784, :)),
+    Chain(x -> reshape(x, 784, :), Dense(784, 256)) |> track |> gpu,
     TrackedNeuralODE(mlp_dynamics |> track |> gpu, [0.f0, 1.f0], true,
-                     REGULARIZE, Tsit5(), save_everystep = false,
+                     REGULARIZE, Vern7(), save_everystep = false,
                      reltol = 1.4f-8, abstol = 1.4f-8, save_start = false),
-    Dense(784, 10) |> track |> gpu
+    Dense(256, 10) |> track |> gpu
 )
 ps = Flux.trainable(node)
 
-opt = Momentum(LR, 0.9f0)
-# opt = Flux.Optimise.Optimiser(ExpDecay(0.1f0, 0.5f0, 10000, 1f-2), Descent(0.1f0))
+opt = Momentum(0.1f0, 0.9f0)
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2)
     pred, _, sv = model(x, p1, p2, p3)
