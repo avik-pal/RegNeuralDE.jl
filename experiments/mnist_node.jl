@@ -17,9 +17,7 @@ CUDA.allowscalar(false)
 config_file = joinpath(pwd(), "experiments", "configs", "mnist_node.yml")
 config = YAML.load_file(config_file)
 
-# Random.seed!(config["seed"])
-println("Not setting a seed! Record the current seed")
-println(Random.default_rng().seed)
+Random.seed!(config["seed"])
 
 hparams = config["hyperparameters"]
 BATCH_SIZE = hparams["batch_size"]
@@ -48,11 +46,11 @@ end
 @functor MLPDynamics
 
 MLPDynamics(in::Integer, hidden::Integer) =
-    MLPDynamics(Dense(in + 1, hidden, σ), Dense(hidden + 1, in, σ))
+    MLPDynamics(Dense(in + 1, hidden, CUDA.tanh), Dense(hidden + 1, in, CUDA.tanh))
 
 function (mlp::MLPDynamics)(x::AbstractMatrix, t::TrackedReal)
     _t = CUDA.ones(Float32, 1, size(x, 2)) .* t
-    return mlp.dense_2(vcat(mlp.dense_1(vcat(σ.(x), _t)), _t))
+    return mlp.dense_2(vcat(mlp.dense_1(vcat(x, _t)), _t))
 end
 #--------------------------------------
 
@@ -73,12 +71,12 @@ node = ClassifierNODE(
 )
 ps = Flux.trainable(node)
 
-opt = ADAM(0.1f0)
+opt = ADAM(0.05)
 
-function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
+function loss_function(x, y, model, p1, p2, p3; λ = 1.0f3, notrack = false)
     pred, _, sv = model(x, p1, p2, p3)
-    cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
-    reg = REGULARIZE ? mean(sv.saveval) : zero(eltype(pred))
+    cross_entropy = mean(-sum(y .* logsoftmax(pred), dims = 1))
+    reg = REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     if !notrack
         ce_un = cross_entropy |> untrack
         reg_un = reg |> untrack
@@ -86,7 +84,7 @@ function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
                            "Cross Entropy Loss" => ce_un,
                            "Regularization" => reg_un))
     end
-    return cross_entropy + λ * reg
+    return cross_entropy + reg
 end
 #--------------------------------------
 
@@ -99,7 +97,7 @@ train_runtimes = Vector{Float64}(undef, EPOCHS + 1)  # The first value is a dumm
 inference_runtimes = Vector{Float64}(undef, EPOCHS + 1)
 train_runtimes[1] = 0
 
-logger = table_logger(["Epoch", "NFE Count", "Train Accuracy",
+logger = table_logger(["Epoch Number", "NFE Count", "Train Accuracy",
                        "Test Accuracy", "Train Runtime", "Inference Runtime"],
                       ["Total Loss", "Cross Entropy Loss", "Regularization"])
 #--------------------------------------
@@ -136,10 +134,6 @@ _ = Tracker.gradient(
 #--------------------------------------
 ## TRAINING
 for epoch in 1:EPOCHS
-    # Learning Rate Scheduler
-    if epoch == 60 || epoch == 100 || epoch == 140
-        opt.eta /= 10
-    end
     start_time = time()
 
     for (i, (x, y)) in enumerate(train_dataloader)
@@ -148,9 +142,7 @@ for epoch in 1:EPOCHS
         )
         for (p, g) in zip(ps, gs)
             length(p) == 0 && continue
-            g = data(g)
-	        # any(isnan.(g)) && error("NaN Gradient Detected")
-	        update!(opt, data(p), g)
+	        update!(opt, data(p), data(g))
         end
     end
 
@@ -171,7 +163,7 @@ for epoch in 1:EPOCHS
            train_accuracies[epoch + 1], test_accuracies[epoch + 1],
            train_runtimes[epoch + 1], inference_runtimes[epoch + 1])
 end
-logger(true)
+logger(true, Dict())
 #--------------------------------------
 
 #--------------------------------------
