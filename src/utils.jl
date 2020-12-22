@@ -1,8 +1,12 @@
-log_normal_pdf(x::AbstractArray{T}, mean, logvar) where T =
+log_normal_pdf(x::AbstractArray{T}, mean, logvar) where {T} =
     -(log(T(2π)) .+ logvar .+ ((x .- mean) .^ 2) ./ exp.(logvar)) ./ 2
 
-function normal_kl(μ₁::AbstractArray{T1}, logvar₁::AbstractArray{T1},
-                   μ₂::AbstractArray{T2}, logvar₂::AbstractArray{T2}) where {T1, T2}
+function normal_kl(
+    μ₁::AbstractArray{T1},
+    logvar₁::AbstractArray{T1},
+    μ₂::AbstractArray{T2},
+    logvar₂::AbstractArray{T2},
+) where {T1,T2}
     v₁ = exp.(logvar₁)
     v₂ = exp.(logvar₂)
 
@@ -43,18 +47,18 @@ mutable struct AverageMeter{T}
     last_value::T
     sum::T
     count::Int
-    
+
     AverageMeter(T = Float32) = new{T}(T(0), T(0), 0)
 end
 
-function reset!(am::AverageMeter{T}) where T
+function reset!(am::AverageMeter{T}) where {T}
     am.last_value = T(0)
     am.sum = T(0)
     am.count = 0
     return am
 end
 
-function update!(am::AverageMeter{T}, val::T) where T
+function update!(am::AverageMeter{T}, val::T) where {T}
     am.last_value = val
     am.sum += val
     am.count += 1
@@ -68,16 +72,14 @@ function table_logger(header::Vector{String}, record::Vector{String} = [])
     n = length(header) + length(record)
     ind_lens = vcat(length.(header), length.(record))
     span = sum(ind_lens .+ 3) + 1
-    println("=" ^ span)
+    println("="^span)
     for h in vcat(header, record)
         print("| $h ")
     end
     println("|")
-    println("=" ^ span)
+    println("="^span)
 
-    avg_meters = Dict{String, AverageMeter}(
-        rec => AverageMeter() for rec in record
-    )
+    avg_meters = Dict{String,AverageMeter}(rec => AverageMeter() for rec in record)
 
     patterns = ["%$l.4f" for l in ind_lens]
     fmtrfuncs = generate_formatter.(patterns)
@@ -89,12 +91,15 @@ function table_logger(header::Vector{String}, record::Vector{String} = [])
             return
         end
         if last
-            println("=" ^ span)
+            println("="^span)
             return
         end
-        for h in [fmtrfunc(arg) for (fmtrfunc, arg) in zip(
-            fmtrfuncs, vcat([args...], [avg_meters[rec]() for rec in record])
-        )]
+        for h in [
+            fmtrfunc(arg)
+            for
+            (fmtrfunc, arg) in
+            zip(fmtrfuncs, vcat([args...], [avg_meters[rec]() for rec in record]))
+        ]
             print("| $h ")
         end
         println("|")

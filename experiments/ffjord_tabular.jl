@@ -30,7 +30,7 @@ isdir(EXPERIMENT_LOGDIR) || mkpath(EXPERIMENT_LOGDIR)
 cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 
 
-struct ConcatSquashLayer{L, B, G}
+struct ConcatSquashLayer{L,B,G}
     linear::L
     hyper_bias::B
     hyper_gate::G
@@ -51,16 +51,17 @@ function (csl::ConcatSquashLayer)(x, t)
 end
 
 
-struct MLPDynamics{L1, L2, L3}
+struct MLPDynamics{L1,L2,L3}
     l1::L1
     l2::L2
     l3::L3
 end
 
-MLPDynamics(in_dims::Int, hdim1::Int, hdim2::Int) =
-    MLPDynamics(ConcatSquashLayer(in_dims, hdim1),
-                ConcatSquashLayer(hdim1, hdim2),
-                ConcatSquashLayer(hdim2, in_dims))
+MLPDynamics(in_dims::Int, hdim1::Int, hdim2::Int) = MLPDynamics(
+    ConcatSquashLayer(in_dims, hdim1),
+    ConcatSquashLayer(hdim1, hdim2),
+    ConcatSquashLayer(hdim2, in_dims),
+)
 
 @functor MLPDynamics
 
@@ -75,10 +76,18 @@ train_dataloader, test_dataloader = load_miniboone(BATCH_SIZE, DATA_PATH)
 
 
 nn_dynamics = MLPDynamics(INPUT_DIMS, HIDDEN_DIMS, HIDDEN_DIMS)
-ffjord = TrackedFFJORD(nn_dynamics |> track, [0.0f0, 1.0f0], REGULARIZE,
-                       INPUT_DIMS, Tsit5(), save_everystep = false,
-                       reltol = 6f-5, abstol = 6f-5,
-                       save_start = false) |> track
+ffjord =
+    TrackedFFJORD(
+        nn_dynamics |> track,
+        [0.0f0, 1.0f0],
+        REGULARIZE,
+        INPUT_DIMS,
+        Tsit5(),
+        save_everystep = false,
+        reltol = 6f-5,
+        abstol = 6f-5,
+        save_start = false,
+    ) |> track
 
 if REGULARIZE
     function loss_function(x, model, p; λ = 1.0f2)
@@ -110,11 +119,17 @@ train_runtimes[1] = 0.0
 nfe_counts[1] = sol.destats.nf
 # train_loglikelihood[1] = data(loglikelihood(ffjord, train_dataloader))
 test_loglikelihood[1] = data(loglikelihood(ffjord, test_dataloader))
-@info (train_runtimes[1], inference_runtimes[1], nfe_counts[1], train_loglikelihood[1], test_loglikelihood[1])
+@info (
+    train_runtimes[1],
+    inference_runtimes[1],
+    nfe_counts[1],
+    train_loglikelihood[1],
+    test_loglikelihood[1],
+)
 
 opt = ADAM(LR)
 
-@progress for epoch in 1:EPOCHS
+@progress for epoch = 1:EPOCHS
     start_time = time()
 
     @progress for (i, x) in enumerate(train_dataloader)
@@ -122,17 +137,23 @@ opt = ADAM(LR)
         update!(opt, data(ps), data(gs))
     end
     # Record the time per epoch
-    train_runtimes[epoch + 1] = time() - start_time
+    train_runtimes[epoch+1] = time() - start_time
 
     # Record the NFE count
     start_time = time()
     sol = ffjord(dummy_data)[end]
-    inference_runtimes[epoch + 1] = time() - start_time
-    nfe_counts[epoch + 1] = sol.destats.nf
+    inference_runtimes[epoch+1] = time() - start_time
+    nfe_counts[epoch+1] = sol.destats.nf
 
     # train_loglikelihood[epoch + 1] = data(loglikelihood(ffjord, train_dataloader))
-    test_loglikelihood[epoch + 1] = data(loglikelihood(ffjord, test_dataloader))
-    @info (train_runtimes[epoch + 1], inference_runtimes[epoch + 1], nfe_counts[epoch + 1], train_loglikelihood[epoch + 1], test_loglikelihood[epoch + 1])
+    test_loglikelihood[epoch+1] = data(loglikelihood(ffjord, test_dataloader))
+    @info (
+        train_runtimes[epoch+1],
+        inference_runtimes[epoch+1],
+        nfe_counts[epoch+1],
+        train_loglikelihood[epoch+1],
+        test_loglikelihood[epoch+1],
+    )
 end
 
 results = Dict(
@@ -140,11 +161,9 @@ results = Dict(
     :train_likelihood => train_likelihood,
     :test_likelihood => test_likelihood,
     :train_runtimes => train_runtimes,
-    :inference_runtimes => inference_runtimes
+    :inference_runtimes => inference_runtimes,
 )
 
-BSON.@save MODEL_WEIGHTS Dict(
-    :p => ffjord.p,
-)
+BSON.@save MODEL_WEIGHTS Dict(:p => ffjord.p)
 
 YAML.write_file(FILENAME, results)

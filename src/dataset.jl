@@ -1,7 +1,7 @@
 function load_mnist(batchsize::Int, transform = cpu)
     # Use MLDataUtils LabelEnc for natural onehot conversion
-    onehot(labels_raw) = convertlabel(LabelEnc.OneOfK, labels_raw,
-                                      LabelEnc.NativeLabels(collect(0:9)))
+    onehot(labels_raw) =
+        convertlabel(LabelEnc.OneOfK, labels_raw, LabelEnc.NativeLabels(collect(0:9)))
     # Load MNIST
     imgs, labels_raw = MNIST.traindata()
     imgs = permutedims(imgs, (2, 1, 3))
@@ -16,29 +16,43 @@ function load_mnist(batchsize::Int, transform = cpu)
     y_test_data = onehot(labels_raw)
     return (
         # Use Flux's DataLoader to automatically minibatch and shuffle the data
-        DataLoader(transform.((x_train_data, y_train_data));
-                   batchsize = batchsize, shuffle = true),
+        DataLoader(
+            transform.((x_train_data, y_train_data));
+            batchsize = batchsize,
+            shuffle = true,
+        ),
         # Don't shuffle the test data
-        DataLoader(transform.((x_test_data, y_test_data));
-                   batchsize = batchsize, shuffle = false)
+        DataLoader(
+            transform.((x_test_data, y_test_data));
+            batchsize = batchsize,
+            shuffle = false,
+        ),
     )
 end
 
-function load_miniboone(batchsize::Int, path::String, train_test_split::Float64 = 0.8,
-                        transform = cpu)
+function load_miniboone(
+    batchsize::Int,
+    path::String,
+    train_test_split::Float64 = 0.8,
+    transform = cpu,
+)
     data = Float32.(npzread(path)')
     total_obs = size(data, 2)
-    train_data, test_data = splitobs(
-        shuffleobs(data), train_test_split
-    )
+    train_data, test_data = splitobs(shuffleobs(data), train_test_split)
 
-    return (DataLoader(transform.(train_data), batchsize = batchsize, shuffle = true),
-            DataLoader(transform.(test_data), batchsize = batchsize, shuffle = false))
+    return (
+        DataLoader(transform.(train_data), batchsize = batchsize, shuffle = true),
+        DataLoader(transform.(test_data), batchsize = batchsize, shuffle = false),
+    )
 end
 
 
-function load_physionet(batchsize::Int, path::String, train_test_split::Float64 = 0.8,
-                        transform = cpu)
+function load_physionet(
+    batchsize::Int,
+    path::String,
+    train_test_split::Float64 = 0.8,
+    transform = cpu,
+)
     data = BSON.load(path)[:dataset]
     for (key, value) in data
         ndims(value) == 1 && continue
@@ -46,9 +60,7 @@ function load_physionet(batchsize::Int, path::String, train_test_split::Float64 
     end
 
     total_obs = size(data["observed_data"])[end]
-    train_idx, test_idx = splitobs(
-        shuffleobs(collect(1:total_obs)), train_test_split
-    )
+    train_idx, test_idx = splitobs(shuffleobs(collect(1:total_obs)), train_test_split)
     # Keys present in data => [:observed_data, :observed_mask, :observed_tp,
     #                          :tp_to_predict, :mask_predicted_data,
     #                          :data_to_predict]
@@ -59,17 +71,28 @@ function load_physionet(batchsize::Int, path::String, train_test_split::Float64 
         push!(test_data, data[key][:, :, test_idx])
     end
     for key in ["observed_tp", "tp_to_predict"]
-        push!(train_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(train_idx))), 
+        push!(train_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(train_idx))),
         push!(test_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(test_idx)))
     end
-    return (DataLoader(transform.(train_data), batchsize = batchsize, shuffle = true),
-            DataLoader(transform.(test_data), batchsize = batchsize, shuffle = true))
+    return (
+        DataLoader(transform.(train_data), batchsize = batchsize, shuffle = true),
+        DataLoader(transform.(test_data), batchsize = batchsize, shuffle = true),
+    )
 end
 
 
-function load_spiral2d(batchsize::Int, transform = cpu; nspiral = 1000,
-                       ntotal = 500, nsample = 100, start = 0.0,
-                       stop = 1.0, noise_std = 0.1, a = 0.0, b = 1.0)
+function load_spiral2d(
+    batchsize::Int,
+    transform = cpu;
+    nspiral = 1000,
+    ntotal = 500,
+    nsample = 100,
+    start = 0.0,
+    stop = 1.0,
+    noise_std = 0.1,
+    a = 0.0,
+    b = 1.0,
+)
     # Toy Spiral 2D dataset for testing regularization on time series
     # extrapolation problem
     # A 2D spiral is parameterized by `r = a + b * theta`
@@ -91,37 +114,53 @@ function load_spiral2d(batchsize::Int, transform = cpu; nspiral = 1000,
 
     sample_trajectories = []
     original_trajectories = []
-    for _ in 1:nspiral
-        t₀ = rand(1:(ntotal - 2 * nsample)) + nsample - 1
+    for _ = 1:nspiral
+        t₀ = rand(1:(ntotal-2*nsample)) + nsample - 1
 
         orig_traj = rand() > 0.5 ? orig_traj_cc : orig_traj_cw
         push!(original_trajectories, copy(orig_traj))
 
-        samp_traj = copy(orig_traj[:, t₀:t₀ + nsample - 1, :])
+        samp_traj = copy(orig_traj[:, t₀:t₀+nsample-1, :])
         samp_traj .+= randn(size(samp_traj)) .* noise_std
         push!(sample_trajectories, samp_traj)
     end
-    
+
     original_trajectories = Float32.(cat(original_trajectories..., dims = 3))
     original_tp = Float32.(reshape(repeat(collect(orig_ts), nspiral), :, nspiral))
     sampled_trajectories = Float32.(cat(sample_trajectories..., dims = 3))
     sampled_tp = Float32.(reshape(repeat(collect(samp_ts), nspiral), :, nspiral))
 
-    return (DataLoader(transform.((sampled_trajectories, sampled_tp)),
-                       batchsize = batchsize, shuffle = true),
-            DataLoader(transform.((original_trajectories, original_tp)),
-                       batchsize = batchsize, shuffle = true))
+    return (
+        DataLoader(
+            transform.((sampled_trajectories, sampled_tp)),
+            batchsize = batchsize,
+            shuffle = true,
+        ),
+        DataLoader(
+            transform.((original_trajectories, original_tp)),
+            batchsize = batchsize,
+            shuffle = true,
+        ),
+    )
 end
 
 
-function load_multimodel_gaussian(batchsize, transform = cpu, train_test_split = 0.8;
-                                  nsamples = 1000, ngaussians = 6, dim = 2,
-                                  radius = 5.0f0, σ = 0.1f0, noise = 0.3f0)
+function load_multimodel_gaussian(
+    batchsize,
+    transform = cpu,
+    train_test_split = 0.8;
+    nsamples = 1000,
+    ngaussians = 6,
+    dim = 2,
+    radius = 5.0f0,
+    σ = 0.1f0,
+    noise = 0.3f0,
+)
     samples_per_gaussian = nsamples ÷ ngaussians
     μ = zeros(Float32, dim)
     θ = 0
     X = Array{Float32}(undef, 2, samples_per_gaussian * ngaussians)
-    for i in 1:ngaussians
+    for i = 1:ngaussians
         θ += Float32(2π / ngaussians)
         μ[1] = cos(θ) * radius
         μ[2] = sin(θ) * radius
@@ -129,11 +168,13 @@ function load_multimodel_gaussian(batchsize, transform = cpu, train_test_split =
         dist = MvNormal(μ, σ)
         samples = rand(dist, samples_per_gaussian)
         noise_vec = Float32.(randn(2, samples_per_gaussian)) .* noise
-        X[:, (i - 1) * samples_per_gaussian + 1: i * samples_per_gaussian] = samples + noise_vec
+        X[:, (i-1)*samples_per_gaussian+1:i*samples_per_gaussian] = samples + noise_vec
     end
 
     X_train, X_test = splitobs(shuffleobs(X), train_test_split)
 
-    return (DataLoader(transform.(X_train), batchsize = batchsize, shuffle = true),
-            DataLoader(transform.(X_test), batchsize = batchsize, shuffle = false))
+    return (
+        DataLoader(transform.(X_train), batchsize = batchsize, shuffle = true),
+        DataLoader(transform.(X_test), batchsize = batchsize, shuffle = false),
+    )
 end

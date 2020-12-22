@@ -2,9 +2,36 @@
 
 Regularizing Neural ODEs to make them easier to solve during evaluation
 
-Link to overleaf document containing the current results: https://www.overleaf.com/6123845296dwmbrwbmsmps
+Overleaf: https://www.overleaf.com/6123845296dwmbrwbmsmps
 
-## Datasets
+## USAGE
 
-Download the preprocessed data from https://github.com/gpapamak/maf. We only need the MINIBOONE Dataset
-here. Please place it in `data/miniboone.npy`.
+Experiments provided here were developed and tested on Julia v1.5.3. All other package versions are automatically enforced. To install do the following in Julia REPL:
+
+```julia
+] dev https://github.com/avik-pal/RegNeuralODE.jl
+```
+
+The code will be downloaded in the `JULIA_PKGDIR` directory.
+
+## DATASETS
+
+* **MINIBOONE**: Download the preprocessed data from https://github.com/gpapamak/maf. We only need the MINIBOONE Dataset here. Place it in `data/miniboone.npy`.
+* **PHYSIONET**: Download the `physionet.bson` file from the initial release of the project and place it in `data/physionet.bson`.
+
+## EXPERIMENTS
+
+Important Parameters of the Experiments are controlled using the `yml` files in `experiments/configs`.
+
+### SUPERVISED CLASSIFICATION
+
+Parameters controlled by `experiments/configs/mnist_node.yml`. To train a Vanilla/Regularized Neural ODE for MNIST classification:
+
+```bash
+$ julia experiments/mnist_node.jl
+```
+
+**NOTES**:
+
+* It is important to anneal λ, else the optimizer will try to make inference faster at the cost of accuracy.
+* The starting value for λ might require tuning for different batch sizes.
