@@ -26,9 +26,9 @@ version = "0.0.4"
 
 [[ArrayInterface]]
 deps = ["LinearAlgebra", "Requires", "SparseArrays"]
-git-tree-sha1 = "c934cf23c55b68602c1fc6ca19485dd7bfa50aeb"
+git-tree-sha1 = "3b5bd474a90bee86b50f26268bbb044bb4d9ef83"
 uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
-version = "2.14.8"
+version = "2.14.9"
 
 [[ArrayLayouts]]
 deps = ["Compat", "FillArrays", "LinearAlgebra", "SparseArrays"]
@@ -129,9 +129,9 @@ version = "0.9.24"
 
 [[ChainRulesTestUtils]]
 deps = ["ChainRulesCore", "Compat", "FiniteDifferences", "LinearAlgebra", "Random", "Test"]
-git-tree-sha1 = "89cb6ebdae4010b8024b2ac22fcb9e316ac9b82c"
+git-tree-sha1 = "cab1059ff2c963f4aa677a882b78040663156aa7"
 uuid = "cdddcdb0-9152-4a09-a978-84456f9df70a"
-version = "0.5.9"
+version = "0.5.10"
 
 [[CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
@@ -251,9 +251,9 @@ version = "1.29.0"
 
 [[DiffEqJump]]
 deps = ["ArrayInterface", "Compat", "DataStructures", "DiffEqBase", "FunctionWrappers", "LinearAlgebra", "PoissonRandom", "Random", "RandomNumbers", "RecursiveArrayTools", "StaticArrays", "TreeViews", "UnPack"]
-git-tree-sha1 = "66103dbc60b468dca307384cbfd7c8cb11c31c74"
+git-tree-sha1 = "bfaa86940cd547ea98536622f124d921d6a4dbd3"
 uuid = "c894b116-72e5-5b58-be3c-e6d8d4ac2b12"
-version = "6.11.0"
+version = "6.11.1"
 
 [[DiffEqNoiseProcess]]
 deps = ["DiffEqBase", "Distributions", "LinearAlgebra", "PoissonRandom", "Random", "Random123", "RandomNumbers", "RecipesBase", "RecursiveArrayTools", "Requires", "ResettableStacks", "StaticArrays", "Statistics"]
@@ -1490,9 +1490,9 @@ version = "1.4.0+3"
 
 [[YAML]]
 deps = ["Base64", "Dates", "Printf"]
-git-tree-sha1 = "dfda54feda73534fc26f59bb7b0346965927c166"
+git-tree-sha1 = "eb846197b193d3eaa3474798a572c3ebf8a1862d"
 uuid = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
-version = "0.4.4"
+version = "0.4.5"
 
 [[ZipFile]]
 deps = ["Libdl", "Printf", "Zlib_jll"]
