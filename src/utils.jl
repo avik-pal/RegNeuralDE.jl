@@ -32,9 +32,9 @@ function diffeqsol_to_trackedarray(x)
     return reshape(xarr, size(xarr)[1:2])
 end
 
-# function diffeqsol_to_trackedarray(x)
-#     return hcat(map(_x -> reshape(_x, size(_x, 1), 1, size(_x, 2)), x.u)...) 
-# end
+function diffeqsol_to_3dtrackedarray(x)
+    return hcat(map(_x -> reshape(_x, size(_x, 1), 1, size(_x, 2)), x.u)...)
+end
 
 _convert_tspan(tspan, p) = eltype(p).(tspan)
 

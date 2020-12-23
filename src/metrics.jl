@@ -25,8 +25,3 @@ function loglikelihood(model, data; batches = length(data))
     end
     return total_loglikelihood / total
 end
-
-# _get_predicted_class(model::ClassifierNODE, x) = classify(cpu(model(x)))
-
-# _get_predicted_class(model::ClassifierNODE{T}, x) where T<:NFECounterCallbackNeuralODE =
-# classify(cpu(model(x)[1]))

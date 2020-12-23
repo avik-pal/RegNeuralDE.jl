@@ -29,7 +29,7 @@ struct TrackedNeuralODE{R,M,P,RE,T,A,K} <: DiffEqFlux.NeuralDELayer
     end
 end
 
-function (n::TrackedNeuralODE{false})(x, p = n.p)
+function (n::TrackedNeuralODE{false})(x, p = n.p; return_everystep::Bool = false)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(n.tspan, p)
@@ -46,8 +46,11 @@ function (n::TrackedNeuralODE{false})(x, p = n.p)
     )
 
     # cat doesn't preserve types
-    # res = diffeqsol_to_trackedarray(sol) :: TrackedArray{Float32, 3, CuArray{Float32, 3}}
-    res = diffeqsol_to_trackedarray(sol)::typeof(x)
+    if return_everystep
+        res = diffeqsol_to_trackedarray(sol)::typeof(x)
+    else
+        res = diffeqsol_to_3dtrackedarray(sol)::TrackedArray{Float32,3,CuArray{Float32,3}}
+    end
     nfe = sol.destats.nf::Int
 
     return res, nfe, nothing
@@ -74,7 +77,7 @@ function solution(n::TrackedNeuralODE{false}, x, p = n.p)
 end
 
 
-function (n::TrackedNeuralODE{true})(x, p = n.p)
+function (n::TrackedNeuralODE{true})(x, p = n.p; return_everystep::Bool = false)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(n.tspan, p)
@@ -93,8 +96,11 @@ function (n::TrackedNeuralODE{true})(x, p = n.p)
     )
 
     # cat doesn't preserve types
-    # res = diffeqsol_to_trackedarray(sol) :: TrackedArray{Float32, 3, CuArray{Float32, 3}}
-    res = diffeqsol_to_trackedarray(sol)::typeof(x)
+    if return_everystep
+        res = diffeqsol_to_trackedarray(sol)::typeof(x)
+    else
+        res = diffeqsol_to_3dtrackedarray(sol)::TrackedArray{Float32,3,CuArray{Float32,3}}
+    end
     nfe = sol.destats.nf::Int
 
     return res, nfe, sv

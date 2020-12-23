@@ -28,14 +28,18 @@ untrack(m) = fmap(Tracker.data, m)
 # Include code
 include("dataset.jl")
 include("utils.jl")
-include("model.jl")
+include("models/basic.jl")
+include("models/neural_ode.jl")
+include("models/supervised_classification.jl")
+include("models/time_series.jl")
+include("models/ffjord.jl")
 include("metrics.jl")
-include("losses.jl")
 
 
 # Export functions
 export load_mnist, load_physionet, load_spiral2d, load_miniboone, load_multimodel_gaussian
-export TrackedNeuralODE, ClassifierNODE, TDChain, RecognitionRNN, TrackedFFJORD
+export TrackedNeuralODE,
+    ClassifierNODE, TDChain, RecognitionRNN, TrackedFFJORD, LatentTimeSeriesModel
 export track, untrack, table_logger, solution
 
 end
