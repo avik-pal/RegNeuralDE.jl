@@ -83,7 +83,7 @@ opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 λ₀ = 100.0f0
 k = log(λ₀) / EPOCHS
 # Exponential Decay
-λ_func = t -> λ₀ * exp(-k * t)
+λ_func(t) = λ₀ * exp(-k * t)
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
     pred, _, sv = model(x, p1, p2, p3)

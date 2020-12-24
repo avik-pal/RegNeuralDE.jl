@@ -104,7 +104,7 @@ end
 train_dataloader, test_dataloader =
     load_physionet(BATCH_SIZE, "data/physionet.bson", 0.9, x -> gpu(track(x)))
 
-opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
+opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), AdaMax(0.01f0))
 
 # Setup the models
 gru_rnn = LatentGRU(37, 40, 50) |> track |> gpu
@@ -127,18 +127,27 @@ node = TrackedNeuralODE(
     gen_dynamics,
     [0.0f0, 1.0f0],
     false,
-    false,
+    REGULARIZE,
     Tsit5(),
     saveat = train_dataloader.data[5][1, :, 1] |> cpu |> untrack,
-    reltol = 1.4f-3,
-    abstol = 1.4f-3,
+    reltol = 1.4f-8,
+    abstol = 1.4f-8,
 )
 gen_to_data = Dense(20, 37) |> track |> gpu
 
 model = LatentTimeSeriesModel(gru_rnn, rec_to_gen, node, gen_to_data)
 ps = Flux.trainable(model)
 
-# Loss Functions
+# Anneal the regularization so that it doesn't overpower the
+# the main objective
+λᵣ = 1.0f4
+kᵣ = log(λᵣ) / EPOCHS
+# Exponential Decay
+λᵣ_func(t) = λᵣ * exp(-kᵣ * t)
+
+λₖ_func(t) = max(0, 1 - 0.99f0^(t - 10))
+
+## Loss Functions
 function log_likelihood(∇pred, mask)
     function _sum_stable_infer(x)::typeof(x)
         return sum(x, dims = (1, 2))
@@ -155,8 +164,19 @@ kl_divergence(μ, logσ²) =
 
 mse(∇pred) = mean(∇pred .^ 2)
 
-function loss_function(data, mask, _t, model, p1, p2, p3, p4; λᵣ = 1.0f2, λₖ = 1.0f0)
-    # TODO: Add regularization term
+function loss_function(
+    data,
+    mask,
+    _t,
+    model,
+    p1,
+    p2,
+    p3,
+    p4;
+    λᵣ = 1.0f2,
+    λₖ = 1.0f0,
+    notrack = false,
+)
     x_ = vcat(data, mask, _t)
     result, μ₀, logσ², nfe, sv = model(x_, p1, p2, p3, p4)
 
@@ -165,20 +185,165 @@ function loss_function(data, mask, _t, model, p1, p2, p3, p4; λᵣ = 1.0f2, λ�
     ∇pred = pred_ .- data_
 
     _log_likelihood = log_likelihood(∇pred, mask)
-    _kl_div = kl_divergence(μ₀, logσ²)
+    _kl_div = λₖ .* kl_divergence(μ₀, logσ²)
+    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : zero(eltype(pred_))
+    total_loss = -mean(_log_likelihood .- _kl_div) + reg
 
-    return mean(_log_likelihood .- λₖ .* _kl_div)
+    if !notrack
+        ll_un = -mean(_log_likelihood |> untrack)
+        kl_un = mean(_kl_div |> untrack)
+        rg_un = λᵣ * reg |> untrack
+        tl_un = total_loss |> untrack
+        logger(
+            false,
+            Dict(
+                "Total Loss" => tl_un,
+                "Log Likelihood" => ll_un,
+                "KL Divergence" => kl_un,
+                "Our Regularization" => rg_un,
+            ),
+        )
+    end
+
+    return total_loss
 end
+
+function total_loss_on_dataset(model, dataloader, epoch)
+    loss = 0.0f0
+    count = 0
+    for (i, (d, m, _, _, _, _)) in enumerate(dataloader)
+        count += size(d, 3)
+        loss +=
+            size(d, 3) * data(loss_function(
+                d,
+                m,
+                _t |> track,
+                model,
+                model.p1,
+                model.p2,
+                model.p3,
+                model.p4;
+                λᵣ = λᵣ_func(epoch),
+                λₖ = λₖ_func(epoch),
+                notrack = true,
+            ))
+    end
+    return loss ./ count
+end
+#--------------------------------------
+
+#--------------------------------------
+## LOGGING UTILITIES
+nfe_counts = Vector{Float64}(undef, EPOCHS + 1)
+train_loss = Vector{Float64}(undef, EPOCHS + 1)
+test_loss = Vector{Float64}(undef, EPOCHS + 1)
+train_runtimes = Vector{Float64}(undef, EPOCHS + 1)  # The first value is a dummy value
+inference_runtimes = Vector{Float64}(undef, EPOCHS + 1)
+train_runtimes[1] = 0
+
+logger = table_logger(
+    [
+        "Epoch Number",
+        "NFE Count",
+        "Train Loss",
+        "Test Loss",
+        "Train Runtime",
+        "Inference Runtime",
+    ],
+    ["Total Loss", "Log Likelihood", "KL Divergence", "Our Regularization"],
+)
 #--------------------------------------
 
 #--------------------------------------
 ## TESTING THE MODEL
 # Dummy Input for first run
 d, m, _, _, t, _ = iterate(train_dataloader)[1]
-_t = hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], TrackedArray(CUDA.zeros(1, 1, size(t, 3))))
-x_ = vcat(d, m, _t)
+_t =
+    hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], TrackedArray(CUDA.zeros(1, 1, size(t, 3)))) |>
+    untrack
+x_ = vcat(d, m, _t |> track)
+dummy_data = x_
 result, μ₀, logσ², nfe, sv = model(x_)
-loss_function(d, m, _t, model, ps...)
 
-Tracker.gradient((p1, p2, p3, p4) -> loss_function(d, m, _t, model, p1, p2, p3, p4), ps...)
+loss_function(d, m, _t |> track, model, ps...; notrack = true)
+
+Tracker.gradient(
+    (p1, p2, p3, p4) ->
+        loss_function(d, m, _t |> track, model, p1, p2, p3, p4; notrack = true),
+    ps...,
+)
+#--------------------------------------
+
+#--------------------------------------
+## TRAINING
+for epoch = 1:EPOCHS
+    λᵣ = λᵣ_func(epoch - 1)
+    λₖ = λₖ_func(epoch - 1)
+
+    start_time = time()
+
+    for (i, (d, m, _, _, _, _)) in enumerate(train_dataloader)
+        gs = Tracker.gradient(
+            (p1, p2, p3, p4) -> loss_function(
+                d,
+                m,
+                _t |> track,
+                model,
+                p1,
+                p2,
+                p3,
+                p4;
+                λᵣ = λᵣ,
+                λₖ = λₖ,
+                notrack = false,
+            ),
+            ps...,
+        )
+        for (p, g) in zip(ps, gs)
+            length(p) == 0 && continue
+            update!(opt, data(p), data(g))
+        end
+    end
+
+    # Record the time per epoch
+    train_runtimes[epoch+1] = time() - start_time
+
+    # Record the NFE count
+    start_time = time()
+    _, _, _, nfe, _ = model(dummy_data)
+    inference_runtimes[epoch+1] = time() - start_time
+    nfe_counts[epoch+1] = nfe
+
+    # Test and Train Accuracy
+    train_loss[epoch+1] = total_loss_on_dataset(model, train_dataloader, epoch - 1)
+    test_loss[epoch+1] = total_loss_on_dataset(model, test_dataloader, epoch - 1)
+
+    logger(
+        false,
+        Dict(),
+        epoch,
+        nfe_counts[epoch+1],
+        train_loss[epoch+1],
+        test_loss[epoch+1],
+        train_runtimes[epoch+1],
+        inference_runtimes[epoch+1],
+    )
+end
+logger(true, Dict())
+#--------------------------------------
+
+#--------------------------------------
+## STORE THE RESULTS
+results = Dict(
+    :nfe_counts => nfe_counts,
+    :train_loss => train_loss,
+    :test_loss => test_loss,
+    :train_runtimes => train_runtimes,
+    :inference_runtimes => inference_runtimes,
+)
+
+weights = Flux.params(node) .|> cpu .|> untrack
+BSON.@save MODEL_WEIGHTS weights
+
+YAML.write_file(FILENAME, results)
 #--------------------------------------

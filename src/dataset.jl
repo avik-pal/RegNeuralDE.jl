@@ -72,8 +72,18 @@ function load_physionet(
         push!(test_data, repeat(reshape(data[key], 1, :, 1), 1, 1, length(test_idx)))
     end
     return (
-        DataLoader(transform.(train_data)..., batchsize = batchsize, shuffle = true),
-        DataLoader(transform.(test_data)..., batchsize = batchsize, shuffle = true),
+        DataLoader(
+            transform.(train_data)...,
+            batchsize = batchsize,
+            shuffle = true,
+            partial = false,
+        ),
+        DataLoader(
+            transform.(test_data)...,
+            batchsize = batchsize,
+            shuffle = true,
+            partial = false,
+        ),
     )
 end
 
