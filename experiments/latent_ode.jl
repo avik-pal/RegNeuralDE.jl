@@ -212,21 +212,15 @@ function total_loss_on_dataset(model, dataloader, epoch)
     loss = 0.0f0
     count = 0
     for (i, (d, m, _, _, _, _)) in enumerate(dataloader)
+        x_ = vcat(data, mask, _t)
+        result, μ₀, logσ², nfe, sv = model(x_, p1, p2, p3, p4)
+
+        data_ = data .* mask
+        pred_ = result .* mask
+        ∇pred = pred_ .- data_
+
         count += size(d, 3)
-        loss +=
-            size(d, 3) * data(loss_function(
-                d,
-                m,
-                _t |> track,
-                model,
-                model.p1,
-                model.p2,
-                model.p3,
-                model.p4;
-                λᵣ = λᵣ_func(epoch),
-                λₖ = λₖ_func(epoch),
-                notrack = true,
-            ))
+        loss += sum(∇pred .^ 2)
     end
     return loss ./ count
 end
