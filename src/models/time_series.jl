@@ -55,7 +55,7 @@ function (m::LatentTimeSeriesModel{R,E,N,D})(
     logσ² = out[latent_dim+1:end, :]
 
     sample = CUDA.randn(size(μ₀, 1), size(μ₀, 2))::CuArray{Float32,2}
-    z₀ = sample .* exp.(logσ² / 2) .+ μ₀
+    z₀ = sample .* sqrt.(exp.(logσ²)) .+ μ₀
 
     res, nfe, sv = m.node(z₀, p3; return_everystep = true)
 

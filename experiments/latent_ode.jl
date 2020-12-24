@@ -102,7 +102,7 @@ end
 ## MODEL + DATASET + TRAINING UTILS
 # Get the dataset
 train_dataloader, test_dataloader =
-    load_physionet(BATCH_SIZE, "data/physionet.bson", 0.9, x -> gpu(track(x)))
+    load_physionet(BATCH_SIZE, "data/physionet.bson", 0.8, x -> gpu(track(x)))
 
 opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), AdaMax(0.01f0))
 
@@ -140,10 +140,10 @@ ps = Flux.trainable(model)
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
-λᵣ = 1.0f4
-kᵣ = log(λᵣ) / EPOCHS
+λᵣ₀ = 1.0f4
+kᵣ = log(λᵣ₀) / EPOCHS
 # Exponential Decay
-λᵣ_func(t) = λᵣ * exp(-kᵣ * t)
+λᵣ_func(t) = λᵣ₀ * exp(-kᵣ * t)
 
 λₖ_func(t) = max(0, 1 - 0.99f0^(t - 10))
 
@@ -208,19 +208,19 @@ function loss_function(
     return total_loss
 end
 
-function total_loss_on_dataset(model, dataloader, epoch)
+function total_loss_on_dataset(model, dataloader)
     loss = 0.0f0
     count = 0
     for (i, (d, m, _, _, _, _)) in enumerate(dataloader)
-        x_ = vcat(data, mask, _t)
-        result, μ₀, logσ², nfe, sv = model(x_, p1, p2, p3, p4)
+        x_ = vcat(d, m, _t)
+        result, _, _, _, _ = model(x_)
 
-        data_ = data .* mask
-        pred_ = result .* mask
+        data_ = d .* m
+        pred_ = result .* m
         ∇pred = pred_ .- data_
 
         count += size(d, 3)
-        loss += sum(∇pred .^ 2)
+        loss += sum(sum(∇pred .^ 2, dims = (1, 2)) ./ sum(mask, dims = (1, 2))) |> untrack
     end
     return loss ./ count
 end
@@ -257,7 +257,7 @@ _t =
     untrack
 x_ = vcat(d, m, _t |> track)
 dummy_data = x_
-result, μ₀, logσ², nfe, sv = model(x_)
+result, μ₀, logσ², _, sv = model(x_)
 
 loss_function(d, m, _t |> track, model, ps...; notrack = true)
 
@@ -309,8 +309,8 @@ for epoch = 1:EPOCHS
     nfe_counts[epoch+1] = nfe
 
     # Test and Train Accuracy
-    train_loss[epoch+1] = total_loss_on_dataset(model, train_dataloader, epoch - 1)
-    test_loss[epoch+1] = total_loss_on_dataset(model, test_dataloader, epoch - 1)
+    train_loss[epoch+1] = total_loss_on_dataset(model, train_dataloader)
+    test_loss[epoch+1] = total_loss_on_dataset(model, test_dataloader)
 
     logger(
         false,
