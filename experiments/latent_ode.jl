@@ -13,6 +13,26 @@ CUDA.allowscalar(false)
 #--------------------------------------
 
 #--------------------------------------
+## CONFIGURATION
+config_file = joinpath(pwd(), "experiments", "configs", "latent_ode.yml")
+config = YAML.load_file(config_file)
+
+Random.seed!(config["seed"])
+
+hparams = config["hyperparameters"]
+BATCH_SIZE = hparams["batch_size"]
+REGULARIZE = hparams["regularize"]
+EPOCHS = hparams["epochs"]
+EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "latent_ode", "$(string(now()))_$REGULARIZE")
+MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
+FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
+
+# Create a directory to store the results
+isdir(EXPERIMENT_LOGDIR) || mkpath(EXPERIMENT_LOGDIR)
+cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
+#--------------------------------------
+
+#--------------------------------------
 ## NEURAL NETWORK
 # Latent GRU Model
 struct LatentGRU{U,R,N,D}
@@ -23,12 +43,18 @@ struct LatentGRU{U,R,N,D}
 end
 
 function LatentGRU(in_dim::Int, h_dim::Int, latent_dim::Int)
-    update_gate =
-        Chain(Dense(latent_dim * 2 + in_dim, h_dim, CUDA.tanh), Dense(h_dim, latent_dim, σ))
-    reset_gate =
-        Chain(Dense(latent_dim * 2 + in_dim, h_dim, CUDA.tanh), Dense(h_dim, latent_dim, σ))
-    new_state =
-        Chain(Dense(latent_dim * 2 + in_dim, h_dim, CUDA.tanh), Dense(h_dim, latent_dim * 2))
+    update_gate = Chain(
+        Dense(latent_dim * 2 + in_dim * 2 + 1, h_dim, CUDA.tanh),
+        Dense(h_dim, latent_dim, σ),
+    )
+    reset_gate = Chain(
+        Dense(latent_dim * 2 + in_dim * 2 + 1, h_dim, CUDA.tanh),
+        Dense(h_dim, latent_dim, σ),
+    )
+    new_state = Chain(
+        Dense(latent_dim * 2 + in_dim * 2 + 1, h_dim, CUDA.tanh),
+        Dense(h_dim, latent_dim * 2),
+    )
     return LatentGRU(update_gate, reset_gate, new_state, latent_dim)
 end
 
@@ -73,7 +99,15 @@ end
 #--------------------------------------
 
 #--------------------------------------
-## SETUP THE MODELS
+## DATASET + TRAINING UTILS
+# Get the dataset
+train_dataloader, test_dataloader = load_physionet(
+    BATCH_SIZE, "data/physionet.bson", 0.8, x -> gpu(track(x))
+)
+
+opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
+
+# Setup the models
 gru_rnn = LatentGRU(37, 40, 50) |> track |> gpu
 rec_to_gen = Chain(Dense(100, 50, CUDA.tanh), Dense(50, 2 * 20)) |> track |> gpu
 gen_dynamics =
@@ -96,12 +130,12 @@ node = TrackedNeuralODE(
     false,
     false,
     Tsit5(),
-    save_everystep = true,
+    saveat = tr.data[5][1, :, 1] |> cpu |> untrack,
     reltol = 1.4f-3,
     abstol = 1.4f-3,
-    save_start = true,
 )
 gen_to_data = Dense(20, 37) |> track |> gpu
 
 model = LatentTimeSeriesModel(gru_rnn, rec_to_gen, node, gen_to_data)
+ps = Flux.trainable(model)
 #--------------------------------------

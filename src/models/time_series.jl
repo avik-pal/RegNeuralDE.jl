@@ -54,13 +54,16 @@ function (m::LatentTimeSeriesModel{R,E,N,D})(
     μ₀ = out[1:latent_dim, :]
     logσ² = out[latent_dim+1:end, :]
 
-    sample = CUDA.randn(size(μ₀, 1), size(μ₀, 2))::CuArray{Float32, 2}
+    sample = CUDA.randn(size(μ₀, 1), size(μ₀, 2))::CuArray{Float32,2}
     z₀ = sample .* exp.(logσ² / 2) .+ μ₀
 
     res, nfe, sv = m.node(z₀, p3; return_everystep = true)
 
     dec = m.dec(p4)::D
+
+    res = reshape(res, size(res, 1), :)
     result = dec(res)
+    result = reshape(result, size(result, 1), :, size(x, 3))
 
     return result, μ₀, logσ², nfe, sv
 end

@@ -23,7 +23,7 @@ hparams = config["hyperparameters"]
 BATCH_SIZE = hparams["batch_size"]
 REGULARIZE = hparams["regularize"]
 EPOCHS = hparams["epochs"]
-EXPERIMENT_LOGDIR = joinpath(config["log_dir"], "$(string(now()))_$REGULARIZE")
+EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_node", "$(string(now()))_$REGULARIZE")
 MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 

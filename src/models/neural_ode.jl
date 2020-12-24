@@ -46,7 +46,7 @@ function (n::TrackedNeuralODE{false})(x, p = n.p; return_everystep::Bool = false
     )
 
     # cat doesn't preserve types
-    if return_everystep
+    if !return_everystep
         res = diffeqsol_to_trackedarray(sol)::typeof(x)
     else
         res = diffeqsol_to_3dtrackedarray(sol)::TrackedArray{Float32,3,CuArray{Float32,3}}
@@ -96,7 +96,7 @@ function (n::TrackedNeuralODE{true})(x, p = n.p; return_everystep::Bool = false)
     )
 
     # cat doesn't preserve types
-    if return_everystep
+    if !return_everystep
         res = diffeqsol_to_trackedarray(sol)::typeof(x)
     else
         res = diffeqsol_to_3dtrackedarray(sol)::TrackedArray{Float32,3,CuArray{Float32,3}}
