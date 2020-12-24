@@ -99,11 +99,10 @@ end
 #--------------------------------------
 
 #--------------------------------------
-## DATASET + TRAINING UTILS
+## MODEL + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader = load_physionet(
-    BATCH_SIZE, "data/physionet.bson", 0.8, x -> gpu(track(x))
-)
+train_dataloader, test_dataloader =
+    load_physionet(BATCH_SIZE, "data/physionet.bson", 0.9, x -> gpu(track(x)))
 
 opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 
@@ -130,7 +129,7 @@ node = TrackedNeuralODE(
     false,
     false,
     Tsit5(),
-    saveat = tr.data[5][1, :, 1] |> cpu |> untrack,
+    saveat = train_dataloader.data[5][1, :, 1] |> cpu |> untrack,
     reltol = 1.4f-3,
     abstol = 1.4f-3,
 )
@@ -138,4 +137,48 @@ gen_to_data = Dense(20, 37) |> track |> gpu
 
 model = LatentTimeSeriesModel(gru_rnn, rec_to_gen, node, gen_to_data)
 ps = Flux.trainable(model)
+
+# Loss Functions
+function log_likelihood(∇pred, mask)
+    function _sum_stable_infer(x)::typeof(x)
+        return sum(x, dims = (1, 2))
+    end
+    σ_ = 0.01f0
+    sample_likelihood =
+        -CUDA.pow.(∇pred, 2) ./ (2 * σ_^2) .- log(σ_) .- log(Float32(2π)) ./ 2
+    return reshape(_sum_stable_infer(sample_likelihood) ./ _sum_stable_infer(mask), :)
+end
+
+# Holds only for a Standard Gaussian Prior
+kl_divergence(μ, logσ²) =
+    reshape(mean(exp.(logσ²) .+ CUDA.pow.(μ, 2) .- 1 .- logσ², dims = 1) ./ 2, :)
+
+mse(∇pred) = mean(∇pred .^ 2)
+
+function loss_function(data, mask, _t, model, p1, p2, p3, p4; λᵣ = 1.0f2, λₖ = 1.0f0)
+    # TODO: Add regularization term
+    x_ = vcat(data, mask, _t)
+    result, μ₀, logσ², nfe, sv = model(x_, p1, p2, p3, p4)
+
+    data_ = data .* mask
+    pred_ = result .* mask
+    ∇pred = pred_ .- data_
+
+    _log_likelihood = log_likelihood(∇pred, mask)
+    _kl_div = kl_divergence(μ₀, logσ²)
+
+    return mean(_log_likelihood .- λₖ .* _kl_div)
+end
+#--------------------------------------
+
+#--------------------------------------
+## TESTING THE MODEL
+# Dummy Input for first run
+d, m, _, _, t, _ = iterate(train_dataloader)[1]
+_t = hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], TrackedArray(CUDA.zeros(1, 1, size(t, 3))))
+x_ = vcat(d, m, _t)
+result, μ₀, logσ², nfe, sv = model(x_)
+loss_function(d, m, _t, model, ps...)
+
+Tracker.gradient((p1, p2, p3, p4) -> loss_function(d, m, _t, model, p1, p2, p3, p4), ps...)
 #--------------------------------------
