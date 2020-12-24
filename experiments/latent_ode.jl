@@ -190,7 +190,7 @@ function loss_function(
     total_loss = -mean(_log_likelihood .- _kl_div) + reg
 
     if !notrack
-        ll_un = -mean(_log_likelihood |> untrack)
+        l_un = mean(exp.(_log_likelihood |> untrack))
         kl_un = mean(_kl_div |> untrack)
         rg_un = λᵣ * reg |> untrack
         tl_un = total_loss |> untrack
@@ -198,7 +198,7 @@ function loss_function(
             false,
             Dict(
                 "Total Loss" => tl_un,
-                "Log Likelihood" => ll_un,
+                "Likelihood" => l_un,
                 "KL Divergence" => kl_un,
                 "Our Regularization" => rg_un,
             ),
@@ -220,7 +220,7 @@ function total_loss_on_dataset(model, dataloader)
         ∇pred = pred_ .- data_
 
         count += size(d, 3)
-        loss += sum(sum(∇pred .^ 2, dims = (1, 2)) ./ sum(mask, dims = (1, 2))) |> untrack
+        loss += sum(sum(∇pred .^ 2, dims = (1, 2)) ./ sum(m, dims = (1, 2))) |> untrack
     end
     return loss ./ count
 end
@@ -244,7 +244,7 @@ logger = table_logger(
         "Train Runtime",
         "Inference Runtime",
     ],
-    ["Total Loss", "Log Likelihood", "KL Divergence", "Our Regularization"],
+    ["Total Loss", "Likelihood", "KL Divergence", "Our Regularization"],
 )
 #--------------------------------------
 
