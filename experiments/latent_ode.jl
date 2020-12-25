@@ -73,9 +73,9 @@ function single_run(p::LatentGRU, y_mean, y_std, x)
 
     new_state = p.new_state(concat)
     new_state_mean = new_state[1:p.latent_dim, :]
-    # The easy-neural-ode paper uses abs, which is indeed a strange
-    # choice. The standard is to predict log_std and take exp.
-    new_state_std = abs.(new_state[p.latent_dim+1:end, :])
+    # The easy-neural-ode paper uses abs, which is indeed a strange choice.
+    # Instead we treat this value as logσ²
+    new_state_std = new_state[p.latent_dim+1:end, :]
 
     new_y_mean = @. (1 - update_gate) * new_state_mean + update_gate * y_mean
     new_y_std = @. (1 - update_gate) * new_state_std + update_gate * y_std
@@ -83,7 +83,7 @@ function single_run(p::LatentGRU, y_mean, y_std, x)
     mask = sum(x[(size(x, 1)÷2+1):end, :], dims = 1) .> 0
 
     new_y_mean = @. mask * new_y_mean + (1 - mask) * y_mean
-    new_y_std = @. abs(mask * new_y_std + (1 - mask) * y_std)
+    new_y_std = @. mask * new_y_std + (1 - mask) * y_std
 
     return new_y_mean, new_y_std
 end
@@ -104,7 +104,7 @@ end
 train_dataloader, test_dataloader =
     load_physionet(BATCH_SIZE, "data/physionet.bson", 0.8, x -> gpu(track(x)))
 
-opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), AdaMax(0.01f0))
+opt = Flux.Optimise.Optimiser(InvDecay(1e-5), AdaMax(0.01))
 
 # Setup the models
 gru_rnn = LatentGRU(37, 40, 50) |> track |> gpu
@@ -140,7 +140,7 @@ ps = Flux.trainable(model)
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
-λᵣ₀ = 1.0f4
+λᵣ₀ = 1.0f3
 kᵣ = log(λᵣ₀) / EPOCHS
 # Exponential Decay
 λᵣ_func(t) = λᵣ₀ * exp(-kᵣ * t)
@@ -161,8 +161,6 @@ end
 # Holds only for a Standard Gaussian Prior
 kl_divergence(μ, logσ²) =
     reshape(mean(exp.(logσ²) .+ CUDA.pow.(μ, 2) .- 1 .- logσ², dims = 1) ./ 2, :)
-
-mse(∇pred) = mean(∇pred .^ 2)
 
 function loss_function(
     data,
@@ -190,15 +188,15 @@ function loss_function(
     total_loss = -mean(_log_likelihood .- _kl_div) + reg
 
     if !notrack
-        l_un = mean(exp.(_log_likelihood |> untrack))
+        ll_un = -mean(_log_likelihood |> untrack)
         kl_un = mean(_kl_div |> untrack)
-        rg_un = λᵣ * reg |> untrack
+        rg_un = reg |> untrack
         tl_un = total_loss |> untrack
         logger(
             false,
             Dict(
                 "Total Loss" => tl_un,
-                "Likelihood" => l_un,
+                "Negative Log Likelihood" => ll_un,
                 "KL Divergence" => kl_un,
                 "Our Regularization" => rg_un,
             ),
@@ -244,7 +242,7 @@ logger = table_logger(
         "Train Runtime",
         "Inference Runtime",
     ],
-    ["Total Loss", "Likelihood", "KL Divergence", "Our Regularization"],
+    ["Total Loss", "Negative Log Likelihood", "KL Divergence", "Our Regularization"],
 )
 #--------------------------------------
 
@@ -336,7 +334,7 @@ results = Dict(
     :inference_runtimes => inference_runtimes,
 )
 
-weights = Flux.params(node) .|> cpu .|> untrack
+weights = Flux.params(model) .|> cpu .|> untrack
 BSON.@save MODEL_WEIGHTS weights
 
 YAML.write_file(FILENAME, results)
