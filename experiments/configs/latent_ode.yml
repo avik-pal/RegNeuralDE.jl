@@ -2,5 +2,5 @@ name: Physionet Latent ODE
 seed: 1999
 hyperparameters:
     batch_size: 256
-    regularize: false
-    epochs: 200
+    regularize: true
+    epochs: 300

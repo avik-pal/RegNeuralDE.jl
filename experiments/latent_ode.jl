@@ -141,7 +141,8 @@ ps = Flux.trainable(model)
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
 λᵣ₀ = 1.0f3
-kᵣ = log(λᵣ₀) / EPOCHS
+λᵣ₁ = 1.0f2
+kᵣ = log(λᵣ₀ / λᵣ₁) / EPOCHS
 # Exponential Decay
 λᵣ_func(t) = λᵣ₀ * exp(-kᵣ * t)
 
