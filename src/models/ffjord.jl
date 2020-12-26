@@ -109,33 +109,38 @@ function (n::TrackedFFJORD{false,M})(
         )::TrackedArray{Float32,2,CuArray{Float32,2}}
     logpx = logpz .- delta_logp
 
-    return logpx, λ₁, λ₂, sol.destats.nf
+    return logpx, λ₁, λ₂, sol.destats.nf, nothing
 end
 
-function (n::TrackedFFJORD{true})(
+function (n::TrackedFFJORD{true,M})(
     x,
     p = n.p,
     e = Tracker.collect(randn(eltype(x), size(x)));
     regularize = false,
-)
+) where {M}
     pz = n.basedist
     tspan = _convert_tspan(n.tspan, p)
     sense = SensitivityADPassThrough()
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback((u, t, integrator) -> integrator.EEst * integrator.dt, sv)
-    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, false)
-    _z = CUDA.zeros(Float32, 1, size(x, 2)) |> track
+    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, false, M)
+    _z = TrackedArray(CUDA.zeros(Float32, 1, size(x, 2)))
 
     prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
     sol = solve(prob, n.args...; sensealg = sense, callback = svcb, n.kwargs...)
-    pred = sol.u[1]
+    pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
     z = pred[1:end-1, :]
     delta_logp = pred[end:end, :]
 
     # logpdf promotes the type to Float64 by default
     # This function is type unstable when used with Tracker
-    logpz = reshape(logpdf(pz, z |> cpu), 1, :) |> gpu
+    logpz =
+        (
+            reshape(logpdf(pz, z |> cpu), 1, :) |> gpu
+        )::TrackedArray{Float32,2,CuArray{Float32,2}}
     logpx = logpz .- delta_logp
 
-    return logpx, sv, sol.destats.nf
+    nfe = sol.destats.nf::Int
+
+    return logpx, _z, _z, nfe, sv
 end
