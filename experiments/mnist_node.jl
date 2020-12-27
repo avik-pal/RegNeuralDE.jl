@@ -80,8 +80,9 @@ opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
-λ₀ = 100.0f0
-k = log(λ₀) / EPOCHS
+λ₀ = 1.0f2
+λ₁ = 1.0f1
+k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
 

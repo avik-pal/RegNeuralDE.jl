@@ -13,18 +13,14 @@ struct TrackedFFJORD{R,M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
         regularize,
         in_dims,
         args...;
-        basedist = nothing,
         kwargs...,
     )
         p, re = Flux.destructure(model)
-        if basedist === nothing
-            size_input = in_dims
-            T = Float32
-            basedist = MvNormal(
-                zeros(Float32, size_input),
-                I + zeros(Float32, size_input, size_input),
-            )
-        end
+        size_input = in_dims
+        basedist = BatchedMultiVariateNormal(
+            zeros(Float32, size_input),
+            I + zeros(Float32, size_input, size_input),
+        )
         new{
             regularize,
             typeof(model),
@@ -46,9 +42,6 @@ struct TrackedFFJORD{R,M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
     end
 end
 
-
-# This regularize corresponds to the regularization proposed in the original
-# paper
 function _ffjord(u, p, t, re, e, regularize, M)
     m = re(p)::M
     if regularize
@@ -99,14 +92,7 @@ function (n::TrackedFFJORD{false,M})(
         λ₁ = λ₂ = _z[1, :]
     end
 
-    # return z, nothing
-
-    # logpdf promotes the type to Float64 by default
-    # This function is type unstable when used with Tracker
-    logpz =
-        (
-            reshape(logpdf(pz, z |> cpu), 1, :) |> gpu
-        )::TrackedArray{Float32,2,CuArray{Float32,2}}
+    logpz = pz(z)
     logpx = logpz .- delta_logp
 
     return logpx, λ₁, λ₂, sol.destats.nf, nothing
@@ -132,15 +118,29 @@ function (n::TrackedFFJORD{true,M})(
     z = pred[1:end-1, :]
     delta_logp = pred[end:end, :]
 
-    # logpdf promotes the type to Float64 by default
-    # This function is type unstable when used with Tracker
-    logpz =
-        (
-            reshape(logpdf(pz, z |> cpu), 1, :) |> gpu
-        )::TrackedArray{Float32,2,CuArray{Float32,2}}
+    logpz = pz(z)
     logpx = logpz .- delta_logp
 
     nfe = sol.destats.nf::Int
 
     return logpx, _z, _z, nfe, sv
+end
+
+function _deterministic_ffjord(u, p, t, re, M)
+    # m = re(p)::M
+    # z = u[1:end-1, :]
+    # mz, back = Tracker.forward(m, z, t)
+    # eJ = back(e)[1]
+    # trace_jac = sum(eJ .* e, dims = 1)
+    # return vcat(mz, -trace_jac)
+end
+
+function sample(n::TrackedFFJORD{B,M}, p = n.p; nsamples::Int = 1) where {B,M}
+    pz = n.basedist
+    z_samples = sample(pz, nsamples)
+    ffjord_ = (u, p, t) -> _deterministic_ffjord(u, p, t, n.re, M)
+    _z = TrackedArray(CUDA.zeros(Float32, 1, nsamples))
+    prob = ODEProblem{false}(ffjord_, vcat(z_samples, _z), [n.tspan[2], n.tspan[1]], p)
+    x_gen = solve(prob, n.args...; sensealg = SensitivityADPassThrough(), n.kwargs...)
+    return x_gen.u[1][1:end -1, :]
 end

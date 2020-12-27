@@ -1240,9 +1240,9 @@ version = "0.9.6"
 
 [[StochasticDiffEq]]
 deps = ["ArrayInterface", "DataStructures", "DiffEqBase", "DiffEqJump", "DiffEqNoiseProcess", "FillArrays", "FiniteDiff", "ForwardDiff", "LinearAlgebra", "Logging", "MuladdMacro", "NLsolve", "OrdinaryDiffEq", "Random", "RandomNumbers", "RecursiveArrayTools", "Reexport", "SparseArrays", "SparseDiffTools", "StaticArrays", "UnPack"]
-git-tree-sha1 = "45639f315a7ef682697f2c6175e7a4ddc538fd69"
+git-tree-sha1 = "ad25e6af8ae9ca10a8c579d031f0df98b6899992"
 uuid = "789caeaf-c7a9-5a7d-9973-96adeb23e2a0"
-version = "6.27.0"
+version = "6.29.0"
 
 [[StructArrays]]
 deps = ["Adapt", "DataAPI", "Tables"]
