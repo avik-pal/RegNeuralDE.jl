@@ -176,7 +176,7 @@ function load_multimodel_gaussian(
     X_train, X_test = splitobs(shuffleobs(X), train_test_split)
 
     return (
-        DataLoader(transform.(X_train), batchsize = batchsize, shuffle = true),
-        DataLoader(transform.(X_test), batchsize = batchsize, shuffle = false),
+        DataLoader(transform(X_train), batchsize = batchsize, shuffle = true),
+        DataLoader(transform(X_test), batchsize = batchsize, shuffle = false),
     )
 end

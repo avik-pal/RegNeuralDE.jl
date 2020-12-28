@@ -89,7 +89,7 @@ function table_logger(header::Vector{String}, record::Vector{String} = [])
 end
 
 # MvNormal for FFJORD
-struct BatchedMultiVariateNormal{M, N, O, P, Q}
+struct BatchedMultiVariateNormal{M,N,O,P,Q}
     μ::M
     cov::N
     inv_cov::N
@@ -104,31 +104,44 @@ function BatchedMultiVariateNormal(μ::AbstractVector, cov::AbstractMatrix)
     inv_cov = inv(cov)
     det_cov = det(cov)
     lt_decom = Array(cholesky(cov))
-    return BatchedMultiVariateNormal(reshape(μ, :, 1), cov, inv_cov, det_cov, lt_decom, length(μ))
+    return BatchedMultiVariateNormal(
+        reshape(μ, :, 1),
+        cov,
+        inv_cov,
+        det_cov,
+        lt_decom,
+        length(μ),
+    )
 end
 
-function (mvnorm::BatchedMultiVariateNormal)(x::AbstractMatrix{T}) where T
-    denom = sqrt((T(2π) ^ mvnorm.k) * T(mvnorm.det_cov))
+function (mvnorm::BatchedMultiVariateNormal)(x::AbstractMatrix{T}) where {T}
+    denom = sqrt((T(2π)^mvnorm.k) * T(mvnorm.det_cov))
     diff = x .- mvnorm.μ
-    return exp.(diag(-transpose(diff) * (mvnorm.inv_cov * diff) / 2)) / denom
+    return exp.(diag(-permutedims(diff, (2, 1)) * (mvnorm.inv_cov * diff) / 2)) / denom
 end
 
-function sample(mvnorm::BatchedMultiVariateNormal{CuArray{T, 2}}, nsamples::Int) where T
-    samples = CUDA.randn(T, mvnorm.k, nsamples) :: CuArray{T, 2}
+function sample(mvnorm::BatchedMultiVariateNormal{CuArray{T,2}}, nsamples::Int) where {T}
+    samples = CUDA.randn(T, mvnorm.k, nsamples)::CuArray{T,2}
     return mvnorm.μ .+ mvnorm.lt_decom * samples
 end
 
-function sample(mvnorm::BatchedMultiVariateNormal{TrackedArray{T, 2, CuArray{T, 2}}}, nsamples::Int) where T
-    samples = CUDA.randn(T, mvnorm.k, nsamples) :: CuArray{T, 2}
+function sample(
+    mvnorm::BatchedMultiVariateNormal{TrackedArray{T,2,CuArray{T,2}}},
+    nsamples::Int,
+) where {T}
+    samples = CUDA.randn(T, mvnorm.k, nsamples)::CuArray{T,2}
     return mvnorm.μ .+ mvnorm.lt_decom * samples
 end
 
-function sample(mvnorm::BatchedMultiVariateNormal{Array{T, 2}}, nsamples::Int) where T
+function sample(mvnorm::BatchedMultiVariateNormal{Array{T,2}}, nsamples::Int) where {T}
     samples = randn(T, mvnorm.k, nsamples)
     return mvnorm.μ .+ mvnorm.lt_decom * samples
 end
 
-function sample(mvnorm::BatchedMultiVariateNormal{TrackedArray{T, 2, Array{T, 2}}}, nsamples::Int) where T
+function sample(
+    mvnorm::BatchedMultiVariateNormal{TrackedArray{T,2,Array{T,2}}},
+    nsamples::Int,
+) where {T}
     samples = randn(T, mvnorm.k, nsamples)
     return mvnorm.μ .+ mvnorm.lt_decom * samples
 end

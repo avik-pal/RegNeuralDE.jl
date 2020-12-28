@@ -7,20 +7,14 @@ struct TrackedFFJORD{R,M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
     args::A
     kwargs::K
 
-    function TrackedFFJORD(
-        model,
-        tspan,
-        regularize,
-        in_dims,
-        args...;
-        kwargs...,
-    )
+    function TrackedFFJORD(model, tspan, regularize, in_dims, args...; kwargs...)
         p, re = Flux.destructure(model)
         size_input = in_dims
         basedist = BatchedMultiVariateNormal(
             zeros(Float32, size_input),
-            I + zeros(Float32, size_input, size_input),
+            (I + zeros(Float32, size_input, size_input)),
         )
+        basedist = basedist |> gpu
         new{
             regularize,
             typeof(model),
@@ -62,7 +56,7 @@ end
 function (n::TrackedFFJORD{false,M})(
     x,
     p = n.p,
-    e = TrackedArray(CUDA.randn(Float32, size(x)));
+    e = TrackedArray(CUDA.randn(size(x)...));
     regularize = false,
 ) where {M}
     pz = n.basedist
@@ -92,16 +86,17 @@ function (n::TrackedFFJORD{false,M})(
         λ₁ = λ₂ = _z[1, :]
     end
 
-    logpz = pz(z)
+    nfe = sol.destats.nf::Int
+    logpz = CUDA.log.(pz(z))
     logpx = logpz .- delta_logp
 
-    return logpx, λ₁, λ₂, sol.destats.nf, nothing
+    return logpx, λ₁, λ₂, nfe, nothing
 end
 
 function (n::TrackedFFJORD{true,M})(
     x,
     p = n.p,
-    e = Tracker.collect(randn(eltype(x), size(x)));
+    e = TrackedArray(CUDA.randn(size(x)...));
     regularize = false,
 ) where {M}
     pz = n.basedist
@@ -118,7 +113,7 @@ function (n::TrackedFFJORD{true,M})(
     z = pred[1:end-1, :]
     delta_logp = pred[end:end, :]
 
-    logpz = pz(z)
+    logpz = CUDA.log.(pz(z))
     logpx = logpz .- delta_logp
 
     nfe = sol.destats.nf::Int
@@ -126,13 +121,27 @@ function (n::TrackedFFJORD{true,M})(
     return logpx, _z, _z, nfe, sv
 end
 
+function jacobian_fn(f, x::AbstractMatrix, t)
+    y, back = Tracker.forward(f, x, t)
+    z = similar(y)
+    fill!(z, 0)
+    vec = similar(x, size(x, 1), size(x, 1), size(x, 2))
+    for i in 1:size(y, 1)
+        z[i, :] .+= 1
+        vec[i, :, :] = data(back(z)[1])
+    end
+    return vec, y
+ end
+
+_trace_batched(x::AbstractArray{T, 3}) where T =
+    reshape([tr(x[:, :, i]) for i in 1:size(x, 3)], 1, size(x, 3))
+
 function _deterministic_ffjord(u, p, t, re, M)
-    # m = re(p)::M
-    # z = u[1:end-1, :]
-    # mz, back = Tracker.forward(m, z, t)
-    # eJ = back(e)[1]
-    # trace_jac = sum(eJ .* e, dims = 1)
-    # return vcat(mz, -trace_jac)
+    m = re(p)::M
+    z = u[1:end-1, :]
+    vec, mz = jacobian_fn(m, z, t)
+    trace_jac = _trace_batched(vec)
+    return vcat(mz, -trace_jac)
 end
 
 function sample(n::TrackedFFJORD{B,M}, p = n.p; nsamples::Int = 1) where {B,M}
@@ -142,5 +151,5 @@ function sample(n::TrackedFFJORD{B,M}, p = n.p; nsamples::Int = 1) where {B,M}
     _z = TrackedArray(CUDA.zeros(Float32, 1, nsamples))
     prob = ODEProblem{false}(ffjord_, vcat(z_samples, _z), [n.tspan[2], n.tspan[1]], p)
     x_gen = solve(prob, n.args...; sensealg = SensitivityADPassThrough(), n.kwargs...)
-    return x_gen.u[1][1:end -1, :]
+    return x_gen.u[1][1:end-1, :]
 end
