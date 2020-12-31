@@ -17,6 +17,7 @@ config = YAML.load_file(config_file)
 Random.seed!(config["seed"])
 
 hparams = config["hyperparameters"]
+BATCH_SIZE = hparams["batch_size"]
 EPOCHS = hparams["epochs"]
 REGULARIZE = hparams["regularize"]
 REG_TYPE = hparams["type"]
@@ -122,12 +123,17 @@ gen_dynamics =
     ) |>
     track |>
     gpu
+
+# AutoTsit5(Tsit5()) is simply Tsit5() since we don't want to switch to a
+# stiff solver. This "hack" allows us to construct a CompositeAlgorithm and
+# allows us to get the stiffness estimate from the solver itself.
+solver = REGULARIZE ? (REG_TYPE == "stiff_est" ? AutoTsit5(Tsit5()) : Tsit5()) : Tsit5()
 node = TrackedNeuralODE(
     gen_dynamics,
     [0.0f0, 1.0f0],
     false,
     REGULARIZE,
-    Tsit5(),
+    solver,
     saveat = train_dataloader.data[5][1, :, 1] |> cpu |> untrack,
     reltol = 1.4f-8,
     abstol = 1.4f-8,

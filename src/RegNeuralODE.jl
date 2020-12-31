@@ -6,7 +6,7 @@ using Statistics, LinearAlgebra
 using DiffEqFlux, OrdinaryDiffEq, DiffEqCallbacks, DiffEqSensitivity
 # Neural Networks
 using Flux, CUDA
-using Flux.Optimise: update!
+import Flux.Optimise.update!
 # Probabilistic Stuff
 using Distributions, DistributionsAD
 # AD Packages

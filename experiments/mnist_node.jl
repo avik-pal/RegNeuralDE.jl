@@ -61,6 +61,10 @@ train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
 # Define the models
 mlp_dynamics = MLPDynamics(784, 100)
 
+# AutoTsit5(Tsit5()) is simply Tsit5() since we don't want to switch to a
+# stiff solver. This "hack" allows us to construct a CompositeAlgorithm and
+# allows us to get the stiffness estimate from the solver itself.
+solver = REGULARIZE ? (REG_TYPE == "stiff_est" ? AutoTsit5(Tsit5()) : Tsit5()) : Tsit5()
 node = ClassifierNODE(
     Chain(x -> reshape(x, 784, :)) |> track |> gpu,
     TrackedNeuralODE(
@@ -68,7 +72,7 @@ node = ClassifierNODE(
         [0.0f0, 1.0f0],
         true,
         REGULARIZE,
-        Tsit5(),
+        solver,
         save_everystep = false,
         reltol = 1.4f-8,
         abstol = 1.4f-8,
