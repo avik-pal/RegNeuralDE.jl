@@ -31,10 +31,16 @@ end
 
 Flux.trainable(m::ClassifierNODE) = (m.p1, m.p2, m.p3)
 
-function (m::ClassifierNODE{L1,L2,L3})(x, p1 = m.p1, p2 = m.p2, p3 = m.p3) where {L1,L2,L3}
+function (m::ClassifierNODE{L1,L2,L3})(
+    x,
+    p1 = m.p1,
+    p2 = m.p2,
+    p3 = m.p3;
+    node_kwargs...,
+) where {L1,L2,L3}
     preode = m.preode(p1)::L1
     x = preode(x)
-    x, nfe, sv = m.node(x, p2)
+    x, nfe, sv = m.node(x, p2; node_kwargs...)
     postode = m.postode(p3)::L3
     return postode(x), nfe, sv
 end

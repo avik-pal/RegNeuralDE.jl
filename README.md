@@ -2,8 +2,6 @@
 
 Regularizing Neural ODEs to make them easier to solve during evaluation
 
-Overleaf: https://www.overleaf.com/6123845296dwmbrwbmsmps
-
 ## USAGE
 
 Experiments provided here were developed and tested on Julia v1.5.3. All other package versions are automatically enforced. To install do the following in Julia REPL:
@@ -12,7 +10,7 @@ Experiments provided here were developed and tested on Julia v1.5.3. All other p
 ] dev https://github.com/avik-pal/RegNeuralODE.jl
 ```
 
-The code will be downloaded in the `JULIA_PKGDIR` directory.
+The code will be downloaded in the `JULIA_PKG_DEVDIR` directory.
 
 ## DATASETS
 
@@ -31,7 +29,10 @@ Parameters controlled by `experiments/configs/mnist_node.yml`. To train a Vanill
 $ julia experiments/mnist_node.jl
 ```
 
-**NOTES**:
+### LATENT ODE FOR TIME SERIES INTERPOLATION
 
-* It is important to anneal λ, else the optimizer will try to make inference faster at the cost of accuracy.
-* The starting value for λ might require tuning for different batch sizes.
+Parameters controlled by `experiments/configs/latent_ode.yml`. To train a Vanilla/Regularized Latent ODE with GRU Encoder for Physionet Time Series Interpolation
+
+```bash
+$ julia experiments/latent_ode.jl
+```

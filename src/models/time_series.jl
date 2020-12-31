@@ -42,7 +42,8 @@ function (m::LatentTimeSeriesModel{R,E,N,D})(
     p1 = m.p1,
     p2 = m.p2,
     p3 = m.p3,
-    p4 = m.p4,
+    p4 = m.p4;
+    node_kwargs...,
 ) where {R,E,N,D,T}
     rnn = m.rnn(p1)::R
     out = rnn(x)
@@ -57,7 +58,7 @@ function (m::LatentTimeSeriesModel{R,E,N,D})(
     sample = CUDA.randn(size(μ₀, 1), size(μ₀, 2))::CuArray{Float32,2}
     z₀ = sample .* exp.(logσ² / 2) .+ μ₀
 
-    res, nfe, sv = m.node(z₀, p3; return_everystep = true)
+    res, nfe, sv = m.node(z₀, p3; return_everystep = true, node_kwargs...)
 
     dec = m.dec(p4)::D
 

@@ -83,10 +83,14 @@ end
 #--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader =
-    load_multimodel_gaussian(BATCH_SIZE, x -> gpu(track(x)), ngaussians = 6, nsamples = 4096)
+train_dataloader, test_dataloader = load_multimodel_gaussian(
+    BATCH_SIZE,
+    x -> gpu(track(x)),
+    ngaussians = 6,
+    nsamples = 2048,
+)
 
-nn_dynamics = MLPDynamics(2, 32, 32) |> gpu |> track
+nn_dynamics = MLPDynamics(2, 8, 8) |> gpu |> track
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
@@ -105,8 +109,8 @@ opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-2))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
-λ₀ = 1.0f3
-λ₁ = 1.0f1
+λ₀ = 5.0f3
+λ₁ = 1.0f2
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
@@ -159,9 +163,9 @@ logger = table_logger(
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
 dummy_data = CUDA.rand(Float32, 2, BATCH_SIZE) |> track
-start_time = time()
+_start_time = time()
 _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
-inference_runtimes[1] = time() - start_time
+inference_runtimes[1] = time() - _start_time
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
 train_loglikelihood[1] = data(loglikelihood(ffjord, train_dataloader))
@@ -228,20 +232,20 @@ logger(true, Dict())
 
 # Log the time to generate samples
 timings = []
-for i in 1:100
+for i = 1:10
     t = time()
     sample(ffjord, ps[1]; nsamples = BATCH_SIZE)
     push!(timings, time() - t)
 end
-print("Time for Sampling $(BATCH_SIZE) data points: $(minimum(timings)) s")
+println("Time for Sampling $(BATCH_SIZE) data points: $(minimum(timings)) s")
 #--------------------------------------
 
 #--------------------------------------
 ## STORE THE RESULTS
 results = Dict(
     :nfe_counts => nfe_counts,
-    :train_likelihood => train_likelihood,
-    :test_likelihood => test_likelihood,
+    :train_likelihood => train_loglikelihood,
+    :test_likelihood => test_loglikelihood,
     :train_runtimes => train_runtimes,
     :inference_runtimes => inference_runtimes,
     :sampling_time => minimum(timings),

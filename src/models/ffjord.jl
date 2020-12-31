@@ -126,15 +126,15 @@ function jacobian_fn(f, x::AbstractMatrix, t)
     z = similar(y)
     fill!(z, 0)
     vec = similar(x, size(x, 1), size(x, 1), size(x, 2))
-    for i in 1:size(y, 1)
+    for i = 1:size(y, 1)
         z[i, :] .+= 1
         vec[i, :, :] = data(back(z)[1])
     end
     return vec, y
- end
+end
 
-_trace_batched(x::AbstractArray{T, 3}) where T =
-    reshape([tr(x[:, :, i]) for i in 1:size(x, 3)], 1, size(x, 3))
+_trace_batched(x::AbstractArray{T,3}) where {T} =
+    reshape([tr(x[:, :, i]) for i = 1:size(x, 3)], 1, size(x, 3))
 
 function _deterministic_ffjord(u, p, t, re, M)
     m = re(p)::M

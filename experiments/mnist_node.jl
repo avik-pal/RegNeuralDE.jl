@@ -4,9 +4,8 @@ using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker
 using YAML, Dates, BSON, Random, Statistics, Printf
 using CUDA
 using RegNeuralODE: accuracy
-using Flux.Optimise: update!
-using Flux: @functor, glorot_uniform, logitcrossentropy
-using Tracker: TrackedReal, data
+using Flux: @functor
+using Tracker: TrackedReal
 import Base.show
 
 CUDA.allowscalar(false)
@@ -21,9 +20,12 @@ Random.seed!(config["seed"])
 
 hparams = config["hyperparameters"]
 BATCH_SIZE = hparams["batch_size"]
-REGULARIZE = hparams["regularize"]
 EPOCHS = hparams["epochs"]
-EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_node", "$(string(now()))_$REGULARIZE")
+REGULARIZE = hparams["regularize"]
+REG_TYPE = hparams["type"]
+identifier =
+    REGULARIZE ? "$(string(now()))_$(REGULARIZE)_$(REG_TYPE)" : "$(string(now()))_Vanilla"
+EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_node", identifier)
 MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 
@@ -78,16 +80,24 @@ ps = Flux.trainable(node)
 
 opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 
-# Anneal the regularization so that it doesn't overpower the
-# the main objective
-λ₀ = 1.0f2
-λ₁ = 1.0f1
+if REG_TYPE == "error_est"
+    # Anneal the regularization so that it doesn't overpower the
+    # the main objective
+    λ₀ = 1.0f2
+    λ₁ = 1.0f1
+    save_func(u, t, integrator) = integrator.EEst * integrator.dt
+else
+    # No annealing is generally needed for stiff_est
+    λ₀ = 1.0f2
+    λ₁ = 1.0f2
+    save_func(u, t, integrator) = integrator.eigen_est * integrator.dt
+end
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
-    pred, _, sv = model(x, p1, p2, p3)
+    pred, _, sv = model(x, p1, p2, p3; func = save_func)
     cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
     reg = REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     total_loss = cross_entropy + reg
@@ -100,7 +110,7 @@ function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
             Dict(
                 "Total Loss" => total_loss_un,
                 "Cross Entropy Loss" => ce_un,
-                "Our Regularization" => reg_un,
+                "Regularization" => reg_un,
             ),
         )
     end
@@ -113,7 +123,7 @@ end
 nfe_counts = Vector{Float64}(undef, EPOCHS + 1)
 train_accuracies = Vector{Float64}(undef, EPOCHS + 1)
 test_accuracies = Vector{Float64}(undef, EPOCHS + 1)
-train_runtimes = Vector{Float64}(undef, EPOCHS + 1)  # The first value is a dummy value
+train_runtimes = Vector{Float64}(undef, EPOCHS + 1)
 inference_runtimes = Vector{Float64}(undef, EPOCHS + 1)
 train_runtimes[1] = 0
 
@@ -126,7 +136,7 @@ logger = table_logger(
         "Train Runtime",
         "Inference Runtime",
     ],
-    ["Total Loss", "Cross Entropy Loss", "Our Regularization"],
+    ["Total Loss", "Cross Entropy Loss", "Regularization"],
 )
 #--------------------------------------
 
@@ -134,7 +144,7 @@ logger = table_logger(
 ## RECORD DETAILS BEFORE TRAINING STARTS
 dummy_data = rand(Float32, 28, 28, 1, BATCH_SIZE) |> track |> gpu
 stime = time()
-_, _nfe, _ = node(dummy_data)
+_, _nfe, _ = node(dummy_data; func = save_func)
 inference_runtimes[1] = time() - stime
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
@@ -183,10 +193,7 @@ for epoch = 1:EPOCHS
             (p1, p2, p3) -> loss_function(x, y, node, p1, p2, p3; λ = λ),
             ps...,
         )
-        for (p, g) in zip(ps, gs)
-            length(p) == 0 && continue
-            update!(opt, data(p), data(g))
-        end
+        update_parameters!(ps, gs, opt)
     end
 
     # Record the time per epoch

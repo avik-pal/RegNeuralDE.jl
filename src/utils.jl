@@ -145,3 +145,13 @@ function sample(
     samples = randn(T, mvnorm.k, nsamples)
     return mvnorm.μ .+ mvnorm.lt_decom * samples
 end
+
+
+# Gradient Updates
+function update_parameters!(ps, gs, opt)
+    for (p, g) in zip(ps, gs)
+        length(p) == 0 && continue
+        any(isnan.(g)) && error("NaN Gradient Detected. Terminating...")
+        update!(opt, data(p), data(g))
+    end
+end

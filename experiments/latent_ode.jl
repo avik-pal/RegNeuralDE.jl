@@ -3,10 +3,7 @@
 using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker
 using YAML, Dates, BSON, Random, Statistics, Printf
 using CUDA
-using RegNeuralODE: accuracy
-using Flux.Optimise: update!
-using Flux: @functor, glorot_uniform, logitcrossentropy
-using Tracker: TrackedReal, data
+using Flux: @functor
 import Base.show
 
 CUDA.allowscalar(false)
@@ -20,10 +17,12 @@ config = YAML.load_file(config_file)
 Random.seed!(config["seed"])
 
 hparams = config["hyperparameters"]
-BATCH_SIZE = hparams["batch_size"]
-REGULARIZE = hparams["regularize"]
 EPOCHS = hparams["epochs"]
-EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "latent_ode", "$(string(now()))_$REGULARIZE")
+REGULARIZE = hparams["regularize"]
+REG_TYPE = hparams["type"]
+identifier =
+    REGULARIZE ? "$(string(now()))_$(REGULARIZE)_$(REG_TYPE)" : "$(string(now()))_Vanilla"
+EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_node", identifier)
 MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 
@@ -138,10 +137,18 @@ gen_to_data = Dense(20, 37) |> track |> gpu
 model = LatentTimeSeriesModel(gru_rnn, rec_to_gen, node, gen_to_data)
 ps = Flux.trainable(model)
 
-# Anneal the regularization so that it doesn't overpower the
-# the main objective
-λᵣ₀ = 1.0f3
-λᵣ₁ = 1.0f2
+if REG_TYPE == "error_est"
+    # Anneal the regularization so that it doesn't overpower the
+    # the main objective
+    λᵣ₀ = 1.0f3
+    λᵣ₁ = 1.0f2
+    save_func(u, t, integrator) = integrator.EEst * integrator.dt
+else
+    # No annealing is generally needed for stiff_est
+    λᵣ₀ = 1.0f3
+    λᵣ₁ = 1.0f3
+    save_func(u, t, integrator) = integrator.eigen_est * integrator.dt
+end
 kᵣ = log(λᵣ₀ / λᵣ₁) / EPOCHS
 # Exponential Decay
 λᵣ_func(t) = λᵣ₀ * exp(-kᵣ * t)
@@ -177,7 +184,7 @@ function loss_function(
     notrack = false,
 )
     x_ = vcat(data, mask, _t)
-    result, μ₀, logσ², nfe, sv = model(x_, p1, p2, p3, p4)
+    result, μ₀, logσ², nfe, sv = model(x_, p1, p2, p3, p4; func = save_func)
 
     data_ = data .* mask
     pred_ = result .* mask
@@ -199,7 +206,7 @@ function loss_function(
                 "Total Loss" => tl_un,
                 "Negative Log Likelihood" => ll_un,
                 "KL Divergence" => kl_un,
-                "Our Regularization" => rg_un,
+                "Regularization" => rg_un,
             ),
         )
     end
@@ -230,7 +237,7 @@ end
 nfe_counts = Vector{Float64}(undef, EPOCHS + 1)
 train_loss = Vector{Float64}(undef, EPOCHS + 1)
 test_loss = Vector{Float64}(undef, EPOCHS + 1)
-train_runtimes = Vector{Float64}(undef, EPOCHS + 1)  # The first value is a dummy value
+train_runtimes = Vector{Float64}(undef, EPOCHS + 1)
 inference_runtimes = Vector{Float64}(undef, EPOCHS + 1)
 train_runtimes[1] = 0
 
@@ -243,7 +250,7 @@ logger = table_logger(
         "Train Runtime",
         "Inference Runtime",
     ],
-    ["Total Loss", "Negative Log Likelihood", "KL Divergence", "Our Regularization"],
+    ["Total Loss", "Negative Log Likelihood", "KL Divergence", "Regularization"],
 )
 #--------------------------------------
 
@@ -256,7 +263,24 @@ _t =
     untrack
 x_ = vcat(d, m, _t |> track)
 dummy_data = x_
-result, μ₀, logσ², _, sv = model(x_)
+stime = time()
+result, μ₀, logσ², _nfe, sv = model(x_)
+inference_runtimes[1] = time() - stime
+train_runtimes[1] = 0.0
+nfe_counts[1] = _nfe
+train_loss[1] = total_loss_on_dataset(model, train_dataloader)
+test_loss[1] = total_loss_on_dataset(model, test_dataloader)
+
+logger(
+    false,
+    Dict(),
+    0.0,
+    nfe_counts[1],
+    train_loss[1],
+    test_loss[1],
+    train_runtimes[1],
+    inference_runtimes[1],
+)
 
 loss_function(d, m, _t |> track, model, ps...; notrack = true)
 
@@ -292,10 +316,7 @@ for epoch = 1:EPOCHS
             ),
             ps...,
         )
-        for (p, g) in zip(ps, gs)
-            length(p) == 0 && continue
-            update!(opt, data(p), data(g))
-        end
+        update_parameters!(ps, gs, opt)
     end
 
     # Record the time per epoch

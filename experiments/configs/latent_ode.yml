@@ -3,4 +3,5 @@ seed: 1999
 hyperparameters:
     batch_size: 256
     regularize: true
+    type: stiff_est  # Possible Choices: error_est / stiff_est
     epochs: 300

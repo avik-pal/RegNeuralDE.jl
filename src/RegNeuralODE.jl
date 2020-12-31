@@ -6,6 +6,7 @@ using Statistics, LinearAlgebra
 using DiffEqFlux, OrdinaryDiffEq, DiffEqCallbacks, DiffEqSensitivity
 # Neural Networks
 using Flux, CUDA
+using Flux.Optimise: update!
 # Probabilistic Stuff
 using Distributions, DistributionsAD
 # AD Packages
@@ -40,6 +41,6 @@ include("metrics.jl")
 export load_mnist, load_physionet, load_spiral2d, load_miniboone, load_multimodel_gaussian
 export TrackedNeuralODE,
     ClassifierNODE, TDChain, RecognitionRNN, TrackedFFJORD, LatentTimeSeriesModel
-export track, untrack, table_logger, solution, sample
+export track, untrack, table_logger, solution, sample, update_parameters!
 
 end
