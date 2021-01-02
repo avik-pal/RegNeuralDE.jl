@@ -149,11 +149,13 @@ if REG_TYPE == "error_est"
     λᵣ₀ = 1.0f3
     λᵣ₁ = 1.0f2
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
+    get_savevals(x) = x
 else
     # No annealing is generally needed for stiff_est
     λᵣ₀ = 1.0f3
     λᵣ₁ = 1.0f3
-    save_func(u, t, integrator) = integrator.eigen_est * integrator.dt
+    save_func(u, t, integrator) = abs(integrator.eigen_est * integrator.dt)
+    get_savevals(x) = filter(e -> !iszero(e), x)
 end
 kᵣ = log(λᵣ₀ / λᵣ₁) / EPOCHS
 # Exponential Decay
@@ -198,7 +200,7 @@ function loss_function(
 
     _log_likelihood = log_likelihood(∇pred, mask)
     _kl_div = λₖ .* kl_divergence(μ₀, logσ²)
-    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : zero(eltype(pred_))
+    reg = REGULARIZE ? λᵣ * mean(get_savevals(sv.saveval)) : zero(eltype(pred_))
     total_loss = -mean(_log_likelihood .- _kl_div) + reg
 
     if !notrack

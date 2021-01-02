@@ -90,11 +90,13 @@ if REG_TYPE == "error_est"
     λ₀ = 1.0f2
     λ₁ = 1.0f1
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
+    get_savevals(x) = x
 else
     # No annealing is generally needed for stiff_est
     λ₀ = 1.0f2
     λ₁ = 1.0f2
-    save_func(u, t, integrator) = integrator.eigen_est * integrator.dt
+    save_func(u, t, integrator) = abs(integrator.eigen_est * integrator.dt)
+    get_savevals(x) = filter(e -> !iszero(e), x)
 end
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
@@ -103,7 +105,7 @@ k = log(λ₀ / λ₁) / EPOCHS
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
     pred, _, sv = model(x, p1, p2, p3; func = save_func)
     cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
-    reg = REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
+    reg = REGULARIZE ? λ * mean(get_savevals(sv.saveval)) : zero(eltype(pred))
     total_loss = cross_entropy + reg
     if !notrack
         ce_un = cross_entropy |> untrack
