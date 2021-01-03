@@ -16,7 +16,7 @@ CUDA.allowscalar(true)
 #--------------------------------------
 ## CONFIGURATION
 ## Training Parameters
-config_file = joinpath(pwd(), "experiments", "configs", "ffjord_gaussian.yml")
+config_file = joinpath(pwd(), "experiments", "configs", "ffjord_tabular.yml")
 config = YAML.load_file(config_file)
 
 Random.seed!(config["seed"])
@@ -26,7 +26,7 @@ BATCH_SIZE = hparams["batch_size"]
 REGULARIZE = hparams["regularize"]
 EPOCHS = hparams["epochs"]
 EXPERIMENT_LOGDIR =
-    joinpath(pwd(), "results", "ffjord_gaussian", "$(string(now()))_$REGULARIZE")
+    joinpath(pwd(), "results", "ffjord_tabular", "$(string(now()))_$REGULARIZE")
 MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 
@@ -83,19 +83,15 @@ end
 #--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader = load_multimodel_gaussian(
-    BATCH_SIZE,
-    x -> gpu(track(x)),
-    ngaussians = 6,
-    nsamples = 2048,
-)
+train_dataloader, test_dataloader =
+    load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(track(x)))
 
-nn_dynamics = MLPDynamics(2, 8, 8) |> gpu |> track
+nn_dynamics = MLPDynamics(43, 100, 100) |> gpu |> track
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
     REGULARIZE,
-    2,
+    43,
     Tsit5(),
     save_everystep = false,
     reltol = 1.4f-8,
@@ -161,7 +157,7 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-dummy_data = CUDA.rand(Float32, 2, BATCH_SIZE) |> track
+dummy_data = CUDA.rand(Float32, 43, BATCH_SIZE) |> track
 _start_time = time()
 _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
@@ -185,7 +181,7 @@ logger(
 #--------------------------------------
 ## WARMSTART THE GRADIENT COMPUTATION
 Tracker.gradient(
-    p -> loss_function(rand(Float32, 2, 1) |> gpu |> track, ffjord, p; notrack = true),
+    p -> loss_function(rand(Float32, 43, 1) |> gpu |> track, ffjord, p; notrack = true),
     ffjord.p,
 )
 #--------------------------------------
