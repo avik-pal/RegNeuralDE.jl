@@ -1,4 +1,5 @@
 using RegNeuralODE, OrdinaryDiffEq, Flux, CUDA, Tracker
+CUDA.allowscalar(false)
 
 mlp_dynamics = TDChain(Dense(3, 10, CUDA.tanh), Dense(11, 2)) |> track |> gpu
 
