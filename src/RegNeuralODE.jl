@@ -28,19 +28,19 @@ untrack(m) = fmap(Tracker.data, m)
 # Hack to get around scalar indexing issue in gradients for FFJORD
 # See https://github.com/JuliaGPU/Adapt.jl/issues/21
 const Wrapper = Union{Base.ReshapedArray,LinearAlgebra.Transpose,LinearAlgebra.Adjoint}
-function CuArray(x::Base.ReshapedArray{<:Any,<:Any,<:Wrapper})
+function CUDA.CuArray(x::Base.ReshapedArray{<:Any,<:Any,<:Wrapper})
     xp = CuArray(x.parent)
     ra = Base.ReshapedArray(xp, x.dims, x.mi)
     CuArray(ra)
 end
 
-function CuArray(x::LinearAlgebra.Transpose{<:Any,<:Wrapper})
+function CUDA.CuArray(x::LinearAlgebra.Transpose{<:Any,<:Wrapper})
     xp = CuArray(x.parent)
     ra = Base.Transpose(xp)
     CuArray(ra)
 end
 
-function CuArray(x::LinearAlgebra.Adjoint{<:Any,<:Wrapper})
+function CUDA.CuArray(x::LinearAlgebra.Adjoint{<:Any,<:Wrapper})
     xp = CuArray(x.parent)
     ra = Base.Adjoint(xp)
     CuArray(ra)

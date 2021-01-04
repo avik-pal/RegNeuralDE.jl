@@ -56,7 +56,7 @@ end
 function (n::TrackedFFJORD{false,M})(
     x,
     p = n.p,
-    e = TrackedArray(CUDA.randn(size(x)...));
+    e = TrackedArray(CUDA.randn(Float32, size(x)...));
     regularize = false,
 ) where {M}
     pz = n.basedist
@@ -83,7 +83,8 @@ function (n::TrackedFFJORD{false,M})(
         pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
         z = pred[1:end-1, :]
         delta_logp = pred[end, :]
-        λ₁ = λ₂ = _z[1, :]
+        λ₁ = _z[1, :]
+        λ₂ = _z[1, :]
     end
 
     nfe = sol.destats.nf::Int

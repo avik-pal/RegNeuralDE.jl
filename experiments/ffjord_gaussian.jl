@@ -9,8 +9,7 @@ using Flux: @functor
 using Tracker: TrackedReal, data
 import Base.show
 
-# Scalar indexing issue is currently unresolved
-CUDA.allowscalar(true)
+CUDA.allowscalar(false)
 #--------------------------------------
 
 #--------------------------------------
@@ -116,9 +115,13 @@ k = log(λ₀ / λ₁) / EPOCHS
 λ_func(t) = λ₀ * exp(-k * t)
 
 function loss_function(x, model, p; λᵣ = 1.0f2, notrack = false)
-    logpx, r1, r2, nfe, sv = model(x, p)
+    if !REGULARIZE
+        logpx, r1, r2, nfe, sv = model(x, p; regularize=true)
+    else
+        logpx, r1, r2, nfe, sv = model(x, p)
+    end
     neg_log_likelihood = -mean(logpx)
-    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : 0.0f0
+    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : mean(r1) + mean(r2)
     total_loss = neg_log_likelihood + reg
     if !notrack
         ll_un = neg_log_likelihood |> untrack
