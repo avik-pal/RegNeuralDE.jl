@@ -198,10 +198,7 @@ for epoch = 1:EPOCHS
 
     for (i, x) in enumerate(train_dataloader)
         gs = Tracker.gradient(p -> loss_function(x, ffjord, p; λᵣ = λᵣ), ps...)
-        for (p, g) in zip(ps, gs)
-            length(p) == 0 && continue
-            update!(opt, data(p), data(g))
-        end
+        update_parameters!(ps, gs, opt)
     end
 
     # Record the time per epoch

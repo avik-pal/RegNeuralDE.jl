@@ -71,7 +71,7 @@ function (n::TrackedFFJORD{false,M})(
 
         pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
         z = pred[1:end-3, :]
-        delta_logp = pred[end-2:end-2, :]
+        delta_logp = pred[end-2, :]
         λ₁ = pred[end-1, :]
         λ₂ = pred[end, :]
     else
@@ -82,7 +82,7 @@ function (n::TrackedFFJORD{false,M})(
 
         pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
         z = pred[1:end-1, :]
-        delta_logp = pred[end:end, :]
+        delta_logp = pred[end, :]
         λ₁ = λ₂ = _z[1, :]
     end
 
@@ -111,7 +111,7 @@ function (n::TrackedFFJORD{true,M})(
     sol = solve(prob, n.args...; sensealg = sense, callback = svcb, n.kwargs...)
     pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
     z = pred[1:end-1, :]
-    delta_logp = pred[end:end, :]
+    delta_logp = pred[end, :]
 
     logpz = CUDA.log.(pz(z))
     logpx = logpz .- delta_logp
