@@ -93,14 +93,14 @@ ffjord = TrackedFFJORD(
     43,
     Tsit5(),
     save_everystep = false,
-    reltol = 1.4f-8,
-    abstol = 1.4f-8,
+    reltol = 1.4f-3,
+    abstol = 1.4f-3,
     save_start = false,
 )
 
 ps = Flux.trainable(ffjord)
 
-opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-2))
+opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-3))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective

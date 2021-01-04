@@ -1,6 +1,6 @@
 name: MINIBOONE FFJORD TABULAR EXPERIMENT
 seed: 3021
 hyperparameters:
-    batch_size: 256
+    batch_size: 1024
     regularize: false
     epochs: 500
