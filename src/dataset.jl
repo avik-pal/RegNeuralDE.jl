@@ -37,7 +37,9 @@ function load_miniboone(
     transform = cpu,
 )
     data = Float32.(npzread(path)')
-    data = (data .- minimum(data, dims=2)) ./ (maximum(data, dims=2) .- minimum(data, dims=2))
+    data =
+        (data .- minimum(data, dims = 2)) ./
+        (maximum(data, dims = 2) .- minimum(data, dims = 2))
     total_obs = size(data, 2)
     train_data, test_data = splitobs(shuffleobs(data), train_test_split)
 

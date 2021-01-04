@@ -9,8 +9,7 @@ using Flux: @functor
 using Tracker: TrackedReal, data
 import Base.show
 
-# Scalar indexing issue is currently unresolved
-CUDA.allowscalar(true)
+CUDA.allowscalar(false)
 #--------------------------------------
 
 #--------------------------------------

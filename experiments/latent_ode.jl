@@ -155,7 +155,7 @@ else
     λᵣ₀ = 1.0f3
     λᵣ₁ = 1.0f3
     save_func(u, t, integrator) = abs(integrator.eigen_est * integrator.dt)
-    get_savevals(x) = filter(e -> !iszero(e), x)
+    get_savevals(x) = filter(!iszero, x)
 end
 kᵣ = log(λᵣ₀ / λᵣ₁) / EPOCHS
 # Exponential Decay

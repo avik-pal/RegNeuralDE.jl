@@ -96,7 +96,7 @@ else
     λ₀ = 1.0f2
     λ₁ = 1.0f2
     save_func(u, t, integrator) = abs(integrator.eigen_est * integrator.dt)
-    get_savevals(x) = filter(e -> !iszero(e), x)
+    get_savevals(x) = filter(!iszero, x)
 end
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay

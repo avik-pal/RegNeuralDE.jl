@@ -25,6 +25,17 @@ using Format
 track(m) = fmap(x -> x isa AbstractArray ? Tracker.param(x) : x, m)
 untrack(m) = fmap(Tracker.data, m)
 
+# Hack to get around scalar indexing issue in gradients for FFJORD
+# See https://github.com/JuliaGPU/Adapt.jl/issues/21
+Base.convert(
+    ::Type{CuArray{Float32,2}},
+    x::Base.ReshapedArray{
+        Float32,
+        2,
+        Transpose{Float32,CuArray{Float32,2}},
+        Tuple{Base.MultiplicativeInverses.SignedMultiplicativeInverse{Int64}},
+    },
+) = CuArray(x)
 
 # Include code
 include("dataset.jl")
