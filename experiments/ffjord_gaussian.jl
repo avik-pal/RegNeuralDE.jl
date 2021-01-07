@@ -35,51 +35,6 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 #--------------------------------------
 
 #--------------------------------------
-## NEURAL NETWORK
-struct ConcatSquashLayer{L,B,G}
-    linear::L
-    hyper_bias::B
-    hyper_gate::G
-end
-
-function ConcatSquashLayer(in_dim::Int, out_dim::Int)
-    l = Dense(in_dim, out_dim)
-    b = Dense(1, out_dim)
-    g = Dense(1, out_dim)
-    return ConcatSquashLayer(l, b, g)
-end
-
-@functor ConcatSquashLayer
-
-function (csl::ConcatSquashLayer)(x, t)
-    _t = CUDA.ones(Float32, 1, size(x, 2)) .* t
-    return csl.linear(x) .* σ.(csl.hyper_gate(_t)) .+ csl.hyper_bias(_t)
-end
-
-cusoftplus(x) = CUDA.log(CUDA.exp(x) + 1)
-
-struct MLPDynamics{L1,L2,L3}
-    l1::L1
-    l2::L2
-    l3::L3
-end
-
-MLPDynamics(in_dims::Int, hdim1::Int, hdim2::Int) = MLPDynamics(
-    ConcatSquashLayer(in_dims, hdim1),
-    ConcatSquashLayer(hdim1, hdim2),
-    ConcatSquashLayer(hdim2, in_dims),
-)
-
-@functor MLPDynamics
-
-function (mlp::MLPDynamics)(x, t)
-    x = cusoftplus.(mlp.l1(x, t))
-    x = cusoftplus.(mlp.l2(x, t))
-    return mlp.l3(x, t)
-end
-#--------------------------------------
-
-#--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
 train_dataloader, test_dataloader = load_multimodel_gaussian(
@@ -89,7 +44,9 @@ train_dataloader, test_dataloader = load_multimodel_gaussian(
     nsamples = 2048,
 )
 
-nn_dynamics = MLPDynamics(2, 8, 8) |> gpu |> track
+nn_dynamics =
+    TDChain(Dense(3, 8, cusoftplus), Dense(9, 8, cusoftplus), Dense(9, 2)) |> gpu |> track
+
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
@@ -116,7 +73,7 @@ k = log(λ₀ / λ₁) / EPOCHS
 
 function loss_function(x, model, p; λᵣ = 1.0f2, notrack = false)
     if !REGULARIZE
-        logpx, r1, r2, nfe, sv = model(x, p; regularize=true)
+        logpx, r1, r2, nfe, sv = model(x, p; regularize = true)
     else
         logpx, r1, r2, nfe, sv = model(x, p)
     end

@@ -45,15 +45,15 @@ end
 function ConcatSquashLayer(in_dim::Int, out_dim::Int)
     l = Dense(in_dim, out_dim)
     b = Dense(1, out_dim)
-    g = Dense(1, out_dim)
+    g = Dense(1, out_dim, σ)
     return ConcatSquashLayer(l, b, g)
 end
 
 @functor ConcatSquashLayer
 
 function (csl::ConcatSquashLayer)(x, t)
-    _t = CUDA.ones(Float32, 1, size(x, 2)) .* t
-    return csl.linear(x) .* σ.(csl.hyper_gate(_t)) .+ csl.hyper_bias(_t)
+    _t = CUDA.ones(Float32, 1, 1) .* t
+    return csl.linear(x) .* csl.hyper_gate(_t) .+ csl.hyper_bias(_t)
 end
 
 cusoftplus(x) = CUDA.log(CUDA.exp(x) + 1)
@@ -85,7 +85,13 @@ end
 train_dataloader, test_dataloader =
     load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(track(x)))
 
-nn_dynamics = MLPDynamics(43, 100, 100) |> gpu |> track
+# Leads to Spurious type promotion needs to be fixed before usage
+# nn_dynamics = MLPDynamics(43, 100, 100) |> gpu |> track
+nn_dynamics =
+    TDChain(Dense(44, 100, cusoftplus), Dense(101, 100, cusoftplus), Dense(101, 43)) |>
+    gpu |>
+    track
+
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
@@ -112,7 +118,7 @@ k = log(λ₀ / λ₁) / EPOCHS
 
 function loss_function(x, model, p; λᵣ = 1.0f2, notrack = false)
     if !REGULARIZE
-        logpx, r1, r2, nfe, sv = model(x, p; regularize=true)
+        logpx, r1, r2, nfe, sv = model(x, p; regularize = false)
     else
         logpx, r1, r2, nfe, sv = model(x, p)
     end

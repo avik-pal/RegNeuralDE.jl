@@ -36,27 +36,27 @@ struct TrackedFFJORD{R,M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
     end
 end
 
-function _ffjord(u, p, t, re, e, regularize, M)
+@fastmath function _ffjord(u, p, t, re, e, regularize, M)
     m = re(p)::M
     if regularize
         z = u[1:end-3, :]
-        mz, back = Tracker.forward(m, z, t)
+        mz, back = Tracker.forward(z -> m(z, t), z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
         return vcat(mz, -trace_jac, sum(abs2.(mz), dims = 1), norm_batched(eJ) .^ 2)
     else
         z = u[1:end-1, :]
-        mz, back = Tracker.forward(m, z, t)
+        mz, back = Tracker.forward(z -> m(z, t), z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
         return vcat(mz, -trace_jac)
     end
 end
 
-function (n::TrackedFFJORD{false,M})(
+@fastmath function (n::TrackedFFJORD{false,M})(
     x,
     p = n.p,
-    e = TrackedArray(CUDA.randn(Float32, size(x)...));
+    e = CUDA.randn(Float32, size(x)...);
     regularize = false,
 ) where {M}
     pz = n.basedist
@@ -94,10 +94,10 @@ function (n::TrackedFFJORD{false,M})(
     return logpx, λ₁, λ₂, nfe, nothing
 end
 
-function (n::TrackedFFJORD{true,M})(
+@fastmath function (n::TrackedFFJORD{true,M})(
     x,
     p = n.p,
-    e = TrackedArray(CUDA.randn(size(x)...));
+    e = CUDA.randn(size(x)...);
     regularize = false,
 ) where {M}
     pz = n.basedist

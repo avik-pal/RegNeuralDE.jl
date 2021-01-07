@@ -33,7 +33,7 @@ struct TrackedNeuralODE{R,Z,M,P,RE,T,A,K} <: DiffEqFlux.NeuralDELayer
     end
 end
 
-function (n::TrackedNeuralODE{false,false})(x, p = n.p; func = (u, t, int) -> 0)
+@fastmath function (n::TrackedNeuralODE{false,false})(x, p = n.p; func = (u, t, int) -> 0)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(n.tspan, p)
@@ -54,7 +54,7 @@ function (n::TrackedNeuralODE{false,false})(x, p = n.p; func = (u, t, int) -> 0)
     return res, nfe, nothing
 end
 
-function (n::TrackedNeuralODE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
+@fastmath function (n::TrackedNeuralODE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(n.tspan, p)
@@ -75,7 +75,7 @@ function (n::TrackedNeuralODE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
     return res, nfe, nothing
 end
 
-function (n::TrackedNeuralODE{true,false})(
+@fastmath function (n::TrackedNeuralODE{true,false})(
     x,
     p = n.p;
     # Default is to regularize using Error Estimates. Alternative tested
@@ -105,7 +105,7 @@ function (n::TrackedNeuralODE{true,false})(
     return res, nfe, sv
 end
 
-function (n::TrackedNeuralODE{true,true})(
+@fastmath function (n::TrackedNeuralODE{true,true})(
     x,
     p = n.p;
     # Default is to regularize using Error Estimates. Alternative tested

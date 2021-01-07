@@ -76,9 +76,7 @@ node_stiffreg = TrackedNeuralODE(
 )
 
 ## Backward Pass
-@code_warntype
-
-Tracker.gradient(
+@code_warntype Tracker.gradient(
     p -> begin
         res, _, sv = node_stiffreg(
             x_ |> track,
