@@ -150,10 +150,10 @@ function load_spiral2d(
 end
 
 
-function load_multimodel_gaussian(
+function load_gaussian_mixture(
     batchsize,
     transform = cpu,
-    train_test_split = 0.8;
+    train_test_split = 0.75;
     nsamples = 1000,
     ngaussians = 6,
     dim = 2,

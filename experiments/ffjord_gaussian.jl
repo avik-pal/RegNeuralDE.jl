@@ -37,7 +37,7 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 #--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader = load_multimodel_gaussian(
+train_dataloader, test_dataloader = load_gaussian_mixture(
     BATCH_SIZE,
     x -> gpu(track(x)),
     ngaussians = 6,
@@ -45,7 +45,7 @@ train_dataloader, test_dataloader = load_multimodel_gaussian(
 )
 
 nn_dynamics =
-    TDChain(Dense(3, 8, cusoftplus), Dense(9, 8, cusoftplus), Dense(9, 2)) |> gpu |> track
+    TDChain(Dense(3, 8, CUDA.tanh), Dense(9, 8, CUDA.tanh), Dense(9, 2)) |> gpu |> track
 
 ffjord = TrackedFFJORD(
     nn_dynamics,

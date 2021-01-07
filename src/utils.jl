@@ -152,6 +152,6 @@ function update_parameters!(ps, gs, opt)
     for (p, g) in zip(ps, gs)
         length(p) == 0 && continue
         any(isnan.(g)) && error("NaN Gradient Detected. Terminating...")
-        update!(opt, data(p), data(g))
+        Flux.Optimise.update!(opt, data(p), data(g))
     end
 end

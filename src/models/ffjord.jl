@@ -39,13 +39,13 @@ end
 @fastmath function _ffjord(u, p, t, re, e, regularize, M)
     m = re(p)::M
     if regularize
-        z = u[1:end-3, :]
+        z = u[1:end-3, :] |> untrack
         mz, back = Tracker.forward(z -> m(z, t), z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
         return vcat(mz, -trace_jac, sum(abs2.(mz), dims = 1), norm_batched(eJ) .^ 2)
     else
-        z = u[1:end-1, :]
+        z = u[1:end-1, :] |> untrack
         mz, back = Tracker.forward(z -> m(z, t), z)
         eJ = back(e)[1]
         trace_jac = sum(eJ .* e, dims = 1)
@@ -139,7 +139,7 @@ _trace_batched(x::AbstractArray{T,3}) where {T} =
 
 function _deterministic_ffjord(u, p, t, re, M)
     m = re(p)::M
-    z = u[1:end-1, :]
+    z = u[1:end-1, :] |> untrack
     vec, mz = jacobian_fn(m, z, t)
     trace_jac = _trace_batched(vec)
     return vcat(mz, -trace_jac)
