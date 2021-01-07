@@ -66,19 +66,15 @@ opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-2))
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
 λ₀ = 5.0f3
-λ₁ = 1.0f2
+λ₁ = 2.5f3
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
 
 function loss_function(x, model, p; λᵣ = 1.0f2, notrack = false)
-    if !REGULARIZE
-        logpx, r1, r2, nfe, sv = model(x, p; regularize = true)
-    else
-        logpx, r1, r2, nfe, sv = model(x, p)
-    end
+    logpx, r1, r2, nfe, sv = model(x, p)
     neg_log_likelihood = -mean(logpx)
-    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : mean(r1) + mean(r2)
+    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : 0.0f0
     total_loss = neg_log_likelihood + reg
     if !notrack
         ll_un = neg_log_likelihood |> untrack
