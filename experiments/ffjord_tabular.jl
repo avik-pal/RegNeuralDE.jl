@@ -88,7 +88,7 @@ train_dataloader, test_dataloader =
 # Leads to Spurious type promotion needs to be fixed before usage
 # nn_dynamics = MLPDynamics(43, 100, 100) |> gpu |> track
 nn_dynamics =
-    TDChain(Dense(44, 100, cusoftplus), Dense(101, 100, cusoftplus), Dense(101, 43)) |>
+    TDChain(Dense(44, 100, CUDA.tanh), Dense(101, 100, CUDA.tanh), Dense(101, 43)) |>
     gpu |>
     track
 
@@ -99,8 +99,8 @@ ffjord = TrackedFFJORD(
     43,
     Tsit5(),
     save_everystep = false,
-    reltol = 1.4f-3,
-    abstol = 1.4f-3,
+    reltol = 1.4f-8,
+    abstol = 1.4f-8,
     save_start = false,
 )
 
