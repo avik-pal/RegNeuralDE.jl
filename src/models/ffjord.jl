@@ -88,7 +88,8 @@ end
     end
 
     nfe = sol.destats.nf::Int
-    logpz = CUDA.log.(pz(z) .+ eps(eltype(z)))
+    # logpz = CUDA.log.(pz(z) .+ eps(eltype(z)))
+    logpz = reshape(sum(-(log(eltype(z)(2π)) .+ (z .^ 2)) ./ 2, dims = 1), :)
     logpx = logpz .- delta_logp
 
     return logpx, λ₁, λ₂, nfe, nothing
@@ -114,7 +115,8 @@ end
     z = pred[1:end-1, :]
     delta_logp = pred[end, :]
 
-    logpz = CUDA.log.(pz(z) .+ eps(eltype(z)))
+    # logpz = CUDA.log.(pz(z) .+ eps(eltype(z)))
+    logpz = reshape(sum(-(log(eltype(z)(2π)) .+ (z .^ 2)) ./ 2, dims = 1), :)
     logpx = logpz .- delta_logp
 
     nfe = sol.destats.nf::Int

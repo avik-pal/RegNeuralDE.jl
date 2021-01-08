@@ -117,13 +117,9 @@ k = log(λ₀ / λ₁) / EPOCHS
 λ_func(t) = λ₀ * exp(-k * t)
 
 function loss_function(x, model, p; λᵣ = 1.0f2, notrack = false)
-    if !REGULARIZE
-        logpx, r1, r2, nfe, sv = model(x, p; regularize = false)
-    else
-        logpx, r1, r2, nfe, sv = model(x, p)
-    end
+    logpx, r1, r2, nfe, sv = model(x, p)
     neg_log_likelihood = -mean(logpx)
-    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : mean(r1) + mean(r2)
+    reg = REGULARIZE ? λᵣ * mean(sv.saveval) : 0.0f0
     total_loss = neg_log_likelihood + reg
     if !notrack
         ll_un = neg_log_likelihood |> untrack
@@ -172,8 +168,8 @@ _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
-train_loglikelihood[1] = 0.0 # data(loglikelihood(ffjord, train_dataloader))
-test_loglikelihood[1] = 0.0 # data(loglikelihood(ffjord, test_dataloader))
+train_loglikelihood[1] = data(loglikelihood(ffjord, train_dataloader))
+test_loglikelihood[1] = data(loglikelihood(ffjord, test_dataloader))
 
 logger(
     false,
@@ -215,8 +211,8 @@ for epoch = 1:EPOCHS
     inference_runtimes[epoch+1] = time() - start_time
     nfe_counts[epoch+1] = nfe
 
-    train_loglikelihood[epoch+1] = 0.0 # data(loglikelihood(ffjord, train_dataloader))
-    test_loglikelihood[epoch+1] = 0.0 # data(loglikelihood(ffjord, test_dataloader))
+    train_loglikelihood[epoch+1] = data(loglikelihood(ffjord, train_dataloader))
+    test_loglikelihood[epoch+1] = data(loglikelihood(ffjord, test_dataloader))
 
     logger(
         false,
