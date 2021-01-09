@@ -77,9 +77,7 @@ function table_logger(header::Vector{String}, record::Vector{String} = [])
             return
         end
         for h in [
-            fmtrfunc(arg)
-            for
-            (fmtrfunc, arg) in
+            fmtrfunc(arg) for (fmtrfunc, arg) in
             zip(fmtrfuncs, vcat([args...], [avg_meters[rec]() for rec in record]))
         ]
             print("| $h ")

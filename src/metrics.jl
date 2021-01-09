@@ -7,7 +7,7 @@ function accuracy(model, data; batches = length(data))
     for (i, (x, y)) in enumerate(collect(data))
         i > batches && break
         target_class = classify(cpu(y))
-        predicted_class = classify(cpu(model(x)[1]))
+        predicted_class = classify(cpu(model(x |> track)[1]))
         total_correct += sum(target_class .== predicted_class)
         total += length(target_class)
     end
@@ -19,7 +19,7 @@ function loglikelihood(model, data; batches = length(data))
     total = 0
     for (i, x) in enumerate(data)
         i > batches && break
-        res = model(x)
+        res = model(x |> track)
         total_loglikelihood += sum(res[1])
         total += size(x, 2)
     end

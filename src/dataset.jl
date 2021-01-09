@@ -15,15 +15,15 @@ function load_mnist(batchsize::Int, transform = cpu)
     x_test_data = Float32.(reshape(imgs, 28, 28, 1, size(imgs, 3)))
     y_test_data = onehot(labels_raw)
     return (
-        # Use Flux's DataLoader to automatically minibatch and shuffle the data
-        DataLoader(
-            transform.((x_train_data, y_train_data));
+        # Use Flux's Flux.Data.DataLoader to automatically minibatch and shuffle the data
+        Flux.Data.DataLoader(
+            transform.(copy.((x_train_data, y_train_data)));
             batchsize = batchsize,
             shuffle = true,
         ),
         # Don't shuffle the test data
-        DataLoader(
-            transform.((x_test_data, y_test_data));
+        Flux.Data.DataLoader(
+            transform.(copy.((x_test_data, y_test_data)));
             batchsize = batchsize,
             shuffle = false,
         ),
@@ -42,8 +42,16 @@ function load_miniboone(
     train_data, test_data = splitobs(shuffleobs(data), train_test_split)
 
     return (
-        DataLoader(transform(train_data), batchsize = batchsize, shuffle = true),
-        DataLoader(transform(test_data), batchsize = batchsize, shuffle = false),
+        Flux.Data.DataLoader(
+            transform(copy(train_data)),
+            batchsize = batchsize,
+            shuffle = true,
+        ),
+        Flux.Data.DataLoader(
+            transform(copy(test_data)),
+            batchsize = batchsize,
+            shuffle = false,
+        ),
     )
 end
 
@@ -68,14 +76,14 @@ function load_physionet(
         push!(test_data, reshape(data[key][:, test_idx], 1, 49, :))
     end
     return (
-        DataLoader(
-            transform.(train_data)...,
+        Flux.Data.DataLoader(
+            transform.(copy.(train_data))...,
             batchsize = batchsize,
             shuffle = true,
             partial = false,
         ),
-        DataLoader(
-            transform.(test_data)...,
+        Flux.Data.DataLoader(
+            transform.(copy.(test_data))...,
             batchsize = batchsize,
             shuffle = true,
             partial = false,
@@ -134,12 +142,12 @@ function load_spiral2d(
     sampled_tp = Float32.(reshape(repeat(collect(samp_ts), nspiral), :, nspiral))
 
     return (
-        DataLoader(
+        Flux.Data.DataLoader(
             transform.((sampled_trajectories, sampled_tp)),
             batchsize = batchsize,
             shuffle = true,
         ),
-        DataLoader(
+        Flux.Data.DataLoader(
             transform.((original_trajectories, original_tp)),
             batchsize = batchsize,
             shuffle = true,
@@ -177,7 +185,15 @@ function load_gaussian_mixture(
     X_train, X_test = splitobs(shuffleobs(X), train_test_split)
 
     return (
-        DataLoader(transform(X_train), batchsize = batchsize, shuffle = true),
-        DataLoader(transform(X_test), batchsize = batchsize, shuffle = false),
+        Flux.Data.DataLoader(
+            transform(copy(X_train)),
+            batchsize = batchsize,
+            shuffle = true,
+        ),
+        Flux.Data.DataLoader(
+            transform(copy(X_test)),
+            batchsize = batchsize,
+            shuffle = false,
+        ),
     )
 end

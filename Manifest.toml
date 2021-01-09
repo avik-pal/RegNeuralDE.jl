@@ -209,6 +209,12 @@ git-tree-sha1 = "ecd850f3d2b815431104252575e7307256121548"
 uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 version = "0.21.8"
 
+[[DataLoaders]]
+deps = ["DocStringExtensions", "LearnBase", "MLDataPattern", "Parameters", "Random", "ThreadPools"]
+git-tree-sha1 = "5ca678562d2cbb0417f56b31ef083b31c654c9ce"
+uuid = "2e981812-ef13-4a9c-bfa0-ab13047b12a9"
+version = "0.1.2"
+
 [[DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
 git-tree-sha1 = "fb0aa371da91c1ff9dc7fbed6122d3e411420b9c"
@@ -1274,6 +1280,12 @@ version = "0.1.2"
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[[ThreadPools]]
+deps = ["Printf", "RecipesBase", "Statistics"]
+git-tree-sha1 = "705ccc29d575b87cceb359dfea19f4653d06df8f"
+uuid = "b189fb0b-2eb5-4ed4-bc0c-d34c51242431"
+version = "1.2.1"
 
 [[TimerOutputs]]
 deps = ["Printf"]

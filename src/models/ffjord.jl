@@ -1,26 +1,18 @@
-struct TrackedFFJORD{R,M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
+struct TrackedFFJORD{R,M,P,RE,T,A,K} <: DiffEqFlux.CNFLayer
     model::M
     p::P
     re::RE
-    basedist::D
     tspan::T
     args::A
     kwargs::K
 
-    function TrackedFFJORD(model, tspan, regularize, in_dims, args...; kwargs...)
+    function TrackedFFJORD(model, tspan, regularize, args...; kwargs...)
         p, re = Flux.destructure(model)
-        size_input = in_dims
-        basedist = BatchedMultiVariateNormal(
-            zeros(Float32, size_input),
-            (I + zeros(Float32, size_input, size_input)),
-        )
-        basedist = basedist |> gpu
         new{
             regularize,
             typeof(model),
             typeof(p),
             typeof(re),
-            typeof(basedist),
             typeof(tspan),
             typeof(args),
             typeof(kwargs),
@@ -28,7 +20,6 @@ struct TrackedFFJORD{R,M,P,RE,D,T,A,K} <: DiffEqFlux.CNFLayer
             model,
             p,
             re,
-            basedist,
             tspan,
             args,
             kwargs,
@@ -59,7 +50,6 @@ end
     e = CUDA.randn(Float32, size(x)...);
     regularize = false,
 ) where {M}
-    pz = n.basedist
     sense = SensitivityADPassThrough()
     tspan = _convert_tspan(n.tspan, p)
     ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, regularize, M)
@@ -88,8 +78,7 @@ end
     end
 
     nfe = sol.destats.nf::Int
-    # logpz = CUDA.log.(pz(z) .+ eps(eltype(z)))
-    logpz = reshape(sum(-(log(eltype(z)(2π)) .+ (z .^ 2)) ./ 2, dims = 1), :)
+    logpz = reshape(sum(-(log(eltype(z)(2π)) .+ CUDA.pow.(z, 2)) ./ 2, dims = 1), :)
     logpx = logpz .- delta_logp
 
     return logpx, λ₁, λ₂, nfe, nothing
@@ -101,7 +90,6 @@ end
     e = CUDA.randn(size(x)...);
     regularize = false,
 ) where {M}
-    pz = n.basedist
     tspan = _convert_tspan(n.tspan, p)
     sense = SensitivityADPassThrough()
     sv = SavedValues(eltype(tspan), eltype(p))
@@ -115,8 +103,7 @@ end
     z = pred[1:end-1, :]
     delta_logp = pred[end, :]
 
-    # logpz = CUDA.log.(pz(z) .+ eps(eltype(z)))
-    logpz = reshape(sum(-(log(eltype(z)(2π)) .+ (z .^ 2)) ./ 2, dims = 1), :)
+    logpz = reshape(sum(-(log(eltype(z)(2π)) .+ CUDA.pow.(z, 2)) ./ 2, dims = 1), :)
     logpx = logpz .- delta_logp
 
     nfe = sol.destats.nf::Int
@@ -148,8 +135,7 @@ function _deterministic_ffjord(u, p, t, re, M)
 end
 
 function sample(n::TrackedFFJORD{B,M}, p = n.p; nsamples::Int = 1) where {B,M}
-    pz = n.basedist
-    z_samples = sample(pz, nsamples)
+    z_samples = CUDA.randn(size(n.re(p)[1].W, 2) - 1, nsamples)
     ffjord_ = (u, p, t) -> _deterministic_ffjord(u, p, t, n.re, M)
     _z = TrackedArray(CUDA.zeros(Float32, 1, nsamples))
     prob = ODEProblem{false}(ffjord_, vcat(z_samples, _z), [n.tspan[2], n.tspan[1]], p)

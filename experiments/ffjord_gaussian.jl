@@ -21,8 +21,8 @@ config = YAML.load_file(config_file)
 Random.seed!(config["seed"])
 
 hparams = config["hyperparameters"]
-BATCH_SIZE = hparams["batch_size"]
-REGULARIZE = hparams["regularize"]
+const BATCH_SIZE = hparams["batch_size"]
+const REGULARIZE = hparams["regularize"]
 EPOCHS = hparams["epochs"]
 EXPERIMENT_LOGDIR =
     joinpath(pwd(), "results", "ffjord_gaussian", "$(string(now()))_$REGULARIZE")
@@ -37,12 +37,8 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 #--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader = load_gaussian_mixture(
-    BATCH_SIZE,
-    x -> gpu(track(x)),
-    ngaussians = 6,
-    nsamples = 2048,
-)
+train_dataloader, test_dataloader =
+    load_gaussian_mixture(BATCH_SIZE, x -> gpu(x), ngaussians = 6, nsamples = 2048)
 
 nn_dynamics =
     TDChain(Dense(3, 8, CUDA.tanh), Dense(9, 8, CUDA.tanh), Dense(9, 2)) |> gpu |> track
@@ -51,7 +47,6 @@ ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
     REGULARIZE,
-    2,
     Tsit5(),
     save_everystep = false,
     reltol = 1.4f-8,
@@ -61,7 +56,7 @@ ffjord = TrackedFFJORD(
 
 ps = Flux.trainable(ffjord)
 
-opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-2))
+opt = Flux.Optimise.Optimiser(WeightDecay(1e-3), ADAM(4e-2))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
@@ -117,14 +112,14 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-dummy_data = CUDA.rand(Float32, 2, BATCH_SIZE) |> track
+const dummy_data = CUDA.rand(Float32, 2, BATCH_SIZE)
 _start_time = time()
 _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
-train_loglikelihood[1] = data(loglikelihood(ffjord, train_dataloader))
-test_loglikelihood[1] = data(loglikelihood(ffjord, test_dataloader))
+train_loglikelihood[1] = 0 # data(loglikelihood(ffjord, train_dataloader))
+test_loglikelihood[1] = 0 # data(loglikelihood(ffjord, test_dataloader))
 
 logger(
     false,
@@ -166,8 +161,8 @@ for epoch = 1:EPOCHS
     inference_runtimes[epoch+1] = time() - start_time
     nfe_counts[epoch+1] = nfe
 
-    train_loglikelihood[epoch+1] = data(loglikelihood(ffjord, train_dataloader))
-    test_loglikelihood[epoch+1] = data(loglikelihood(ffjord, test_dataloader))
+    train_loglikelihood[epoch+1] = 0 # data(loglikelihood(ffjord, train_dataloader))
+    test_loglikelihood[epoch+1] = 0 # data(loglikelihood(ffjord, test_dataloader))
 
     logger(
         false,

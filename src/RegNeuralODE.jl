@@ -3,7 +3,7 @@ module RegNeuralODE
 # StdLib
 using Statistics, LinearAlgebra
 # DiffEq Packages
-using DiffEqFlux, OrdinaryDiffEq, DiffEqCallbacks, DiffEqSensitivity
+using DiffEqFlux, OrdinaryDiffEq, DiffEqCallbacks, DiffEqSensitivity, StochasticDiffEq
 # Neural Networks
 using Flux, CUDA
 # Probabilistic Stuff
@@ -12,8 +12,8 @@ using Distributions, DistributionsAD
 using Tracker
 using Tracker: data, TrackedReal
 # Data Processing
-using MLDatasets, MLDataUtils, BSON, NPZ
-using Flux.Data: DataLoader
+using MLDatasets, MLDataUtils, BSON, NPZ, DataLoaders
+import LearnBase
 # Helper Modules
 using MacroTools: @forward
 using Format

@@ -21,8 +21,8 @@ config = YAML.load_file(config_file)
 Random.seed!(config["seed"])
 
 hparams = config["hyperparameters"]
-BATCH_SIZE = hparams["batch_size"]
-REGULARIZE = hparams["regularize"]
+const BATCH_SIZE = hparams["batch_size"]
+const REGULARIZE = hparams["regularize"]
 EPOCHS = hparams["epochs"]
 EXPERIMENT_LOGDIR =
     joinpath(pwd(), "results", "ffjord_tabular", "$(string(now()))_$REGULARIZE")
@@ -56,7 +56,7 @@ function (csl::ConcatSquashLayer)(x, t)
     return csl.linear(x) .* csl.hyper_gate(_t) .+ csl.hyper_bias(_t)
 end
 
-cusoftplus(x) = CUDA.log(CUDA.exp(x) + 1)
+cusoftplus(x) = ifelse(x > 0, x + CUDA.log1p(CUDA.exp(-x)), CUDA.log1p(CUDA.exp(x)))
 
 struct MLPDynamics{L1,L2,L3}
     l1::L1
@@ -83,20 +83,19 @@ end
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
 train_dataloader, test_dataloader =
-    load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(track(x)))
+    load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(x))
 
 # Leads to Spurious type promotion needs to be fixed before usage
-# nn_dynamics = MLPDynamics(43, 43 * 20, 43 * 20) |> gpu |> track
-nn_dynamics =
-    TDChain(Dense(44, 860, CUDA.tanh), Dense(861, 860, CUDA.tanh), Dense(861, 43)) |>
-    gpu |>
-    track
+nn_dynamics = MLPDynamics(43, 860, 860) |> gpu |> track
+# nn_dynamics =
+#     TDChain(Dense(44, 860, CUDA.tanh), Dense(861, 860, CUDA.tanh), Dense(861, 43)) |>
+#     gpu |>
+#     track
 
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
     REGULARIZE,
-    43,
     Tsit5(),
     save_everystep = false,
     reltol = 1.4f-8,
@@ -106,12 +105,12 @@ ffjord = TrackedFFJORD(
 
 ps = Flux.trainable(ffjord)
 
-opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-3))
+opt = Flux.Optimise.Optimiser(WeightDecay(1e-3), ADAM(4e-2))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
 λ₀ = 5.0f3
-λ₁ = 1.0f3
+λ₁ = 2.5f3
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
@@ -162,7 +161,7 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-dummy_data = CUDA.rand(Float32, 43, BATCH_SIZE) |> track
+const dummy_data = CUDA.rand(Float32, 43, BATCH_SIZE)
 _start_time = time()
 _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
