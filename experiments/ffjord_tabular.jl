@@ -86,9 +86,9 @@ train_dataloader, test_dataloader =
     load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(track(x)))
 
 # Leads to Spurious type promotion needs to be fixed before usage
-# nn_dynamics = MLPDynamics(43, 100, 100) |> gpu |> track
+# nn_dynamics = MLPDynamics(43, 43 * 20, 43 * 20) |> gpu |> track
 nn_dynamics =
-    TDChain(Dense(44, 100, CUDA.tanh), Dense(101, 100, CUDA.tanh), Dense(101, 43)) |>
+    TDChain(Dense(44, 860, CUDA.tanh), Dense(861, 860, CUDA.tanh), Dense(861, 43)) |>
     gpu |>
     track
 
@@ -111,7 +111,7 @@ opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-3))
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
 λ₀ = 5.0f3
-λ₁ = 1.0f2
+λ₁ = 1.0f3
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
@@ -168,8 +168,8 @@ _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
-train_loglikelihood[1] = data(loglikelihood(ffjord, train_dataloader))
-test_loglikelihood[1] = data(loglikelihood(ffjord, test_dataloader))
+train_loglikelihood[1] = 0 # data(loglikelihood(ffjord, train_dataloader))
+test_loglikelihood[1] = 0 # data(loglikelihood(ffjord, test_dataloader))
 
 logger(
     false,
@@ -211,8 +211,8 @@ for epoch = 1:EPOCHS
     inference_runtimes[epoch+1] = time() - start_time
     nfe_counts[epoch+1] = nfe
 
-    train_loglikelihood[epoch+1] = data(loglikelihood(ffjord, train_dataloader))
-    test_loglikelihood[epoch+1] = data(loglikelihood(ffjord, test_dataloader))
+    train_loglikelihood[epoch+1] = 0 # data(loglikelihood(ffjord, train_dataloader))
+    test_loglikelihood[epoch+1] = 0 # data(loglikelihood(ffjord, test_dataloader))
 
     logger(
         false,
