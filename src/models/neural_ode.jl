@@ -119,7 +119,7 @@ end
 
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback(func, sv)
-    ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
+    ff = ODEFunction{false}(dudt_, tgrad = n.time_dep ? nothing : DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
 
     sol = solve(
@@ -140,7 +140,7 @@ function solution(n::TrackedNeuralODE, x, p = n.p)
 
     tspan = _convert_tspan(n.tspan, p)
 
-    ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
+    ff = ODEFunction{false}(dudt_, tgrad = n.time_dep ? nothing : DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
 
     sol = solve(

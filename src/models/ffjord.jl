@@ -53,10 +53,11 @@ end
     sense = SensitivityADPassThrough()
     tspan = _convert_tspan(n.tspan, p)
     ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, regularize, M)
+    ff = ODEFunction{false}(ffjord_)
     if regularize
         _z = TrackedArray(CUDA.zeros(Float32, 3, size(x, 2)))
 
-        prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
+        prob = ODEProblem{false}(ff, vcat(x, _z), tspan, p)
         sol = solve(prob, n.args...; sensealg = sense, n.kwargs...)
 
         pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
@@ -67,7 +68,7 @@ end
     else
         _z = TrackedArray(CUDA.zeros(Float32, 1, size(x, 2)))
 
-        prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
+        prob = ODEProblem{false}(ff, vcat(x, _z), tspan, p)
         sol = solve(prob, n.args...; sensealg = sense, n.kwargs...)
 
         pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
@@ -95,9 +96,10 @@ end
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback((u, t, integrator) -> integrator.EEst * integrator.dt, sv)
     ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, false, M)
+    ff = ODEFunction{false}(ffjord_)
     _z = TrackedArray(CUDA.zeros(Float32, 1, size(x, 2)))
 
-    prob = ODEProblem{false}(ffjord_, vcat(x, _z), tspan, p)
+    prob = ODEProblem{false}(ff, vcat(x, _z), tspan, p)
     sol = solve(prob, n.args...; sensealg = sense, callback = svcb, n.kwargs...)
     pred = sol.u[1]::TrackedArray{Float32,2,CuArray{Float32,2}}
     z = pred[1:end-1, :]
@@ -112,7 +114,7 @@ end
 end
 
 function jacobian_fn(f, x::AbstractMatrix, t)
-    y, back = Tracker.forward(f, x, t)
+    y, back = Tracker.forward(x -> f(x, t), x)
     z = similar(y)
     fill!(z, 0)
     vec = similar(x, size(x, 1), size(x, 1), size(x, 2))

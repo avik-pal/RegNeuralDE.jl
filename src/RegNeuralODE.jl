@@ -48,18 +48,19 @@ end
 Base.convert(
     ::Type{CuArray{Float32,2}},
     x::Base.ReshapedArray{
-        T,
+        Float32,
         2,
-        Transpose{T,CuArray{T,2}},
+        Transpose{Float32,CuArray{Float32,2}},
         Tuple{Base.MultiplicativeInverses.SignedMultiplicativeInverse{Int64}},
     },
-) where {T} = CuArray(x)
+) = CuArray(x)
 
 # Include code
 include("dataset.jl")
 include("utils.jl")
 include("models/basic.jl")
 include("models/neural_ode.jl")
+include("models/neural_sde.jl")
 include("models/supervised_classification.jl")
 include("models/time_series.jl")
 include("models/ffjord.jl")
@@ -69,7 +70,12 @@ include("metrics.jl")
 # Export functions
 export load_mnist, load_physionet, load_spiral2d, load_miniboone, load_gaussian_mixture
 export TrackedNeuralODE,
-    ClassifierNODE, TDChain, RecognitionRNN, TrackedFFJORD, LatentTimeSeriesModel
+    TrackedNeuralDSDE,
+    ClassifierNODE,
+    TDChain,
+    RecognitionRNN,
+    TrackedFFJORD,
+    LatentTimeSeriesModel
 export track, untrack, table_logger, solution, sample, update_parameters!
 
 end

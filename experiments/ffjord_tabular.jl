@@ -86,11 +86,11 @@ train_dataloader, test_dataloader =
     load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(x))
 
 # Leads to Spurious type promotion needs to be fixed before usage
-nn_dynamics = MLPDynamics(43, 860, 860) |> gpu |> track
-# nn_dynamics =
-#     TDChain(Dense(44, 860, CUDA.tanh), Dense(861, 860, CUDA.tanh), Dense(861, 43)) |>
-#     gpu |>
-#     track
+# nn_dynamics = MLPDynamics(43, 860, 860) |> gpu |> track
+nn_dynamics =
+    TDChain(Dense(44, 100, CUDA.tanh), Dense(101, 100, CUDA.tanh), Dense(101, 43)) |>
+    gpu |>
+    track
 
 ffjord = TrackedFFJORD(
     nn_dynamics,
@@ -98,8 +98,8 @@ ffjord = TrackedFFJORD(
     REGULARIZE,
     Tsit5(),
     save_everystep = false,
-    reltol = 1.4f-8,
-    abstol = 1.4f-8,
+    reltol = 1.4f-6,
+    abstol = 1.4f-6,
     save_start = false,
 )
 
@@ -185,7 +185,7 @@ logger(
 #--------------------------------------
 ## WARMSTART THE GRADIENT COMPUTATION
 Tracker.gradient(
-    p -> loss_function(rand(Float32, 43, 1) |> gpu |> track, ffjord, p; notrack = true),
+    p -> loss_function(rand(Float32, 43, 1) |> gpu, ffjord, p; notrack = true),
     ffjord.p,
 )
 #--------------------------------------

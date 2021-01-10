@@ -112,7 +112,7 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-const dummy_data = CUDA.rand(Float32, 2, BATCH_SIZE)
+const dummy_data = train_dataloader.data[:, 1:BATCH_SIZE]
 _start_time = time()
 _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time

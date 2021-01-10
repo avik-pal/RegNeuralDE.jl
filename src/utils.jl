@@ -151,5 +151,6 @@ function update_parameters!(ps, gs, opt)
         length(p) == 0 && continue
         any(isnan.(g)) && error("NaN Gradient Detected. Terminating...")
         Flux.Optimise.update!(opt, data(p), data(g))
+        p.tracker.f = Tracker.Call()
     end
 end
