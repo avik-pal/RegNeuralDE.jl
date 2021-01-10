@@ -36,46 +36,44 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 
 #--------------------------------------
 ## NEURAL NETWORK
-struct ConcatSquashLayer{L,B,G}
-    linear::L
-    hyper_bias::B
-    hyper_gate::G
+struct MLPDynamics{T}
+    W1::T
+    W2::T
+    W3::T
+    B1::T
+    B2::T
+    B3::T
 end
-
-function ConcatSquashLayer(in_dim::Int, out_dim::Int)
-    l = Dense(in_dim, out_dim)
-    b = Dense(1, out_dim)
-    g = Dense(1, out_dim, σ)
-    return ConcatSquashLayer(l, b, g)
-end
-
-@functor ConcatSquashLayer
-
-function (csl::ConcatSquashLayer)(x, t)
-    _t = CUDA.ones(Float32, 1, 1) .* t
-    return csl.linear(x) .* csl.hyper_gate(_t) .+ csl.hyper_bias(_t)
-end
-
-cusoftplus(x) = ifelse(x > 0, x + CUDA.log1p(CUDA.exp(-x)), CUDA.log1p(CUDA.exp(x)))
-
-struct MLPDynamics{L1,L2,L3}
-    l1::L1
-    l2::L2
-    l3::L3
-end
-
-MLPDynamics(in_dims::Int, hdim1::Int, hdim2::Int) = MLPDynamics(
-    ConcatSquashLayer(in_dims, hdim1),
-    ConcatSquashLayer(hdim1, hdim2),
-    ConcatSquashLayer(hdim2, in_dims),
-)
 
 @functor MLPDynamics
 
-function (mlp::MLPDynamics)(x, t)
-    x = cusoftplus.(mlp.l1(x, t))
-    x = cusoftplus.(mlp.l2(x, t))
-    return mlp.l3(x, t)
+function MLPDynamics(dims::Int, hsize::Int)
+    return MLPDynamics(
+        Flux.glorot_uniform(hsize, dims),
+        Flux.glorot_uniform(hsize, hsize),
+        Flux.glorot_uniform(dims, hsize),
+        zeros(Float32, hsize, 1),
+        zeros(Float32, hsize, 1),
+        zeros(Float32, dims, 1),
+    )
+end
+
+(m::MLPDynamics)(x) = m.W3 * CUDA.tanh.(m.W2 * CUDA.tanh.(m.W1 * x .+ m.B1) .+ m.B2) .+ m.B3
+
+_transpose(x) = permutedims(x, (2, 1))
+
+function forw_n_back(m::MLPDynamics, x, t, e)
+    # x -> N x B, e -> N x B
+    z1 = m.W1 * x .+ m.B1           # H x B
+    tz1 = CUDA.tanh.(z1)            # H x B
+    dtz1 = @. 1 - CUDA.pow(tz1, 2)  # H x B
+    z2 = m.W2 * tz1 .+ m.B2         # H x B
+    tz2 = CUDA.tanh.(z2)            # H x B
+    dtz2 = @. 1 - CUDA.pow(tz2, 2)  # H x B
+    z3 = m.W3 * tz2 .+ m.B3         # N x B
+
+    eJ = _transpose(m.W1) * (dtz1 .* (_transpose(m.W2) * (dtz2 .* (_transpose(m.W3) * e))))
+    return z3, eJ
 end
 #--------------------------------------
 
@@ -86,21 +84,23 @@ train_dataloader, test_dataloader =
     load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(x))
 
 # Leads to Spurious type promotion needs to be fixed before usage
-# nn_dynamics = MLPDynamics(43, 860, 860) |> gpu |> track
-nn_dynamics =
-    TDChain(Dense(44, 100, CUDA.tanh), Dense(101, 100, CUDA.tanh), Dense(101, 43)) |>
-    gpu |>
-    track
+nn_dynamics = MLPDynamics(43, 100) |> gpu |> track
+# nn_dynamics =
+#     TDChain(Dense(44, 100, CUDA.tanh), Dense(101, 100, CUDA.tanh), Dense(101, 43)) |>
+#     gpu |>
+#     track
 
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
+    true,
     REGULARIZE,
     Tsit5(),
     save_everystep = false,
     reltol = 1.4f-6,
     abstol = 1.4f-6,
     save_start = false,
+    dynamics = forw_n_back,
 )
 
 ps = Flux.trainable(ffjord)

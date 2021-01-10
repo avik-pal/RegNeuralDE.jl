@@ -34,7 +34,7 @@ struct TrackedNeuralDSDE{R,M1,M2,P,RE1,RE2,T,A,K} <: DiffEqFlux.NeuralDELayer
             args,
             kwargs,
             length(p1),
-            [0, 0]
+            [0, 0],
         )
     end
 end

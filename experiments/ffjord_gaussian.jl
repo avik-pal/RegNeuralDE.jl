@@ -35,23 +35,67 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 #--------------------------------------
 
 #--------------------------------------
+# CUSTOM NN DYNAMICS
+struct MLPDynamics{T}
+    W1::T
+    W2::T
+    W3::T
+    B1::T
+    B2::T
+    B3::T
+end
+
+@functor MLPDynamics
+
+function MLPDynamics(dims::Int, hsize::Int)
+    return MLPDynamics(
+        Flux.glorot_uniform(hsize, dims),
+        Flux.glorot_uniform(hsize, hsize),
+        Flux.glorot_uniform(dims, hsize),
+        zeros(Float32, hsize, 1),
+        zeros(Float32, hsize, 1),
+        zeros(Float32, dims, 1),
+    )
+end
+
+(m::MLPDynamics)(x) = m.W3 * CUDA.tanh.(m.W2 * CUDA.tanh.(m.W1 * x .+ m.B1) .+ m.B2) .+ m.B3
+
+_transpose(x) = permutedims(x, (2, 1))
+
+function forw_n_back(m::MLPDynamics, x, t, e)
+    # x -> N x B, e -> N x B
+    z1 = m.W1 * x .+ m.B1           # H x B
+    tz1 = CUDA.tanh.(z1)            # H x B
+    dtz1 = @. 1 - CUDA.pow(tz1, 2)  # H x B
+    z2 = m.W2 * tz1 .+ m.B2         # H x B
+    tz2 = CUDA.tanh.(z2)            # H x B
+    dtz2 = @. 1 - CUDA.pow(tz2, 2)  # H x B
+    z3 = m.W3 * tz2 .+ m.B3         # N x B
+
+    eJ = _transpose(m.W1) * (dtz1 .* (_transpose(m.W2) * (dtz2 .* (_transpose(m.W3) * e))))
+    return z3, eJ
+end
+#--------------------------------------
+
+#--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
 train_dataloader, test_dataloader =
     load_gaussian_mixture(BATCH_SIZE, x -> gpu(x), ngaussians = 6, nsamples = 2048)
 
-nn_dynamics =
-    TDChain(Dense(3, 8, CUDA.tanh), Dense(9, 8, CUDA.tanh), Dense(9, 2)) |> gpu |> track
+nn_dynamics = MLPDynamics(2, 16) |> track |> gpu
 
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
+    false,
     REGULARIZE,
     Tsit5(),
     save_everystep = false,
     reltol = 1.4f-8,
     abstol = 1.4f-8,
     save_start = false,
+    dynamics = forw_n_back,
 )
 
 ps = Flux.trainable(ffjord)
@@ -135,10 +179,7 @@ logger(
 
 #--------------------------------------
 ## WARMSTART THE GRADIENT COMPUTATION
-Tracker.gradient(
-    p -> loss_function(rand(Float32, 2, 1) |> gpu |> track, ffjord, p; notrack = true),
-    ffjord.p,
-)
+Tracker.gradient(p -> loss_function(dummy_data, ffjord, p; notrack = true), ffjord.p)
 #--------------------------------------
 
 #--------------------------------------

@@ -1,16 +1,37 @@
-struct TrackedFFJORD{R,M,P,RE,T,A,K} <: DiffEqFlux.CNFLayer
+struct TrackedFFJORD{R,M,F,P,RE,T,A,K} <: DiffEqFlux.CNFLayer
     model::M
+    forw_n_back::F
     p::P
     re::RE
     tspan::T
     args::A
     kwargs::K
+    time_dep::Bool
 
-    function TrackedFFJORD(model, tspan, regularize, args...; kwargs...)
+    function TrackedFFJORD(
+        model,
+        tspan,
+        time_dep::Bool,
+        regularize::Bool,
+        args...;
+        dynamics = nothing,
+        kwargs...,
+    )
         p, re = Flux.destructure(model)
+        if isnothing(dynamics)
+            function forw_n_back(m, z, t, e)
+                mz, back =
+                    time_dep ? Tracker.forward(z -> m(z, t), z) : Tracker.forward(m, z)
+                eJ = back(e)[1]
+                return mz, eJ
+            end
+        else
+            forw_n_back = dynamics
+        end
         new{
             regularize,
             typeof(model),
+            typeof(forw_n_back),
             typeof(p),
             typeof(re),
             typeof(tspan),
@@ -18,27 +39,27 @@ struct TrackedFFJORD{R,M,P,RE,T,A,K} <: DiffEqFlux.CNFLayer
             typeof(kwargs),
         }(
             model,
+            forw_n_back,
             p,
             re,
             tspan,
             args,
             kwargs,
+            time_dep,
         )
     end
 end
 
-@fastmath function _ffjord(u, p, t, re, e, regularize, M)
+@fastmath function _ffjord(u, p, t, re, forw_n_back, e, regularize, M)
     m = re(p)::M
     if regularize
         z = u[1:end-3, :] |> untrack
-        mz, back = Tracker.forward(z -> m(z, t), z)
-        eJ = back(e)[1]
+        mz, eJ = forw_n_back(m, z, t, e)
         trace_jac = sum(eJ .* e, dims = 1)
         return vcat(mz, -trace_jac, sum(abs2.(mz), dims = 1), norm_batched(eJ) .^ 2)
     else
         z = u[1:end-1, :] |> untrack
-        mz, back = Tracker.forward(z -> m(z, t), z)
-        eJ = back(e)[1]
+        mz, eJ = forw_n_back(m, z, t, e)
         trace_jac = sum(eJ .* e, dims = 1)
         return vcat(mz, -trace_jac)
     end
@@ -52,8 +73,8 @@ end
 ) where {M}
     sense = SensitivityADPassThrough()
     tspan = _convert_tspan(n.tspan, p)
-    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, regularize, M)
-    ff = ODEFunction{false}(ffjord_)
+    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, n.forw_n_back, e, regularize, M)
+    ff = ODEFunction{false}(ffjord_, tgrad = n.time_dep ? nothing : DiffEqFlux.basic_tgrad)
     if regularize
         _z = TrackedArray(CUDA.zeros(Float32, 3, size(x, 2)))
 
@@ -95,8 +116,8 @@ end
     sense = SensitivityADPassThrough()
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback((u, t, integrator) -> integrator.EEst * integrator.dt, sv)
-    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, e, false, M)
-    ff = ODEFunction{false}(ffjord_)
+    ffjord_ = (u, p, t) -> _ffjord(u, p, t, n.re, n.forw_n_back, e, false, M)
+    ff = ODEFunction{false}(ffjord_, tgrad = n.time_dep ? nothing : DiffEqFlux.basic_tgrad)
     _z = TrackedArray(CUDA.zeros(Float32, 1, size(x, 2)))
 
     prob = ODEProblem{false}(ff, vcat(x, _z), tspan, p)
@@ -113,8 +134,8 @@ end
     return logpx, _z, _z, nfe, sv
 end
 
-function jacobian_fn(f, x::AbstractMatrix, t)
-    y, back = Tracker.forward(x -> f(x, t), x)
+function jacobian_fn(f, x::AbstractMatrix, t, tdep::Bool)
+    y, back = tdep ? Tracker.forward(x -> f(x, t), x) : Tracker.forward(f, x)
     z = similar(y)
     fill!(z, 0)
     vec = similar(x, size(x, 1), size(x, 1), size(x, 2))
@@ -128,17 +149,17 @@ end
 _trace_batched(x::AbstractArray{T,3}) where {T} =
     reshape([tr(x[:, :, i]) for i = 1:size(x, 3)], 1, size(x, 3))
 
-function _deterministic_ffjord(u, p, t, re, M)
+function _deterministic_ffjord(u, p, t, re, M, tdep)
     m = re(p)::M
     z = u[1:end-1, :] |> untrack
-    vec, mz = jacobian_fn(m, z, t)
+    vec, mz = jacobian_fn(m, z, t, tdep)
     trace_jac = _trace_batched(vec)
     return vcat(mz, -trace_jac)
 end
 
 function sample(n::TrackedFFJORD{B,M}, p = n.p; nsamples::Int = 1) where {B,M}
     z_samples = CUDA.randn(size(n.re(p)[1].W, 2) - 1, nsamples)
-    ffjord_ = (u, p, t) -> _deterministic_ffjord(u, p, t, n.re, M)
+    ffjord_ = (u, p, t) -> _deterministic_ffjord(u, p, t, n.re, M, n.time_dep)
     _z = TrackedArray(CUDA.zeros(Float32, 1, nsamples))
     prob = ODEProblem{false}(ffjord_, vcat(z_samples, _z), [n.tspan[2], n.tspan[1]], p)
     x_gen = solve(prob, n.args...; sensealg = SensitivityADPassThrough(), n.kwargs...)

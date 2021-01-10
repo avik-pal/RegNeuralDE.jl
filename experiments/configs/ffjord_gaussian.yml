@@ -3,4 +3,4 @@ seed: 1999
 hyperparameters:
     batch_size: 1024
     regularize: true
-    epochs: 50
+    epochs: 100
