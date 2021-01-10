@@ -97,20 +97,20 @@ ffjord = TrackedFFJORD(
     REGULARIZE,
     Tsit5(),
     save_everystep = false,
-    reltol = 1.4f-6,
-    abstol = 1.4f-6,
+    reltol = 1.4f-8,
+    abstol = 1.4f-8,
     save_start = false,
     dynamics = forw_n_back,
 )
 
 ps = Flux.trainable(ffjord)
 
-opt = Flux.Optimise.Optimiser(WeightDecay(1e-3), ADAM(4e-2))
+opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-3))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
-λ₀ = 5.0f3
-λ₁ = 2.5f3
+λ₀ = 1.0f3
+λ₁ = 5.0f2
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
@@ -185,7 +185,7 @@ logger(
 #--------------------------------------
 ## WARMSTART THE GRADIENT COMPUTATION
 Tracker.gradient(
-    p -> loss_function(rand(Float32, 43, 1) |> gpu, ffjord, p; notrack = true),
+    p -> loss_function(dummy_data, ffjord, p; notrack = true),
     ffjord.p,
 )
 #--------------------------------------
@@ -230,7 +230,7 @@ logger(true, Dict())
 timings = []
 for i = 1:10
     t = time()
-    sample(ffjord, ps[1]; nsamples = BATCH_SIZE)
+    sample(ffjord, 43, ps[1]; nsamples = BATCH_SIZE)
     push!(timings, time() - t)
 end
 println("Time for Sampling $(BATCH_SIZE) data points: $(minimum(timings)) s")

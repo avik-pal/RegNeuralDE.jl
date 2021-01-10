@@ -53,12 +53,12 @@ end
 @fastmath function _ffjord(u, p, t, re, forw_n_back, e, regularize, M)
     m = re(p)::M
     if regularize
-        z = u[1:end-3, :] |> untrack
+        z = u[1:end-3, :]
         mz, eJ = forw_n_back(m, z, t, e)
         trace_jac = sum(eJ .* e, dims = 1)
         return vcat(mz, -trace_jac, sum(abs2.(mz), dims = 1), norm_batched(eJ) .^ 2)
     else
-        z = u[1:end-1, :] |> untrack
+        z = u[1:end-1, :]
         mz, eJ = forw_n_back(m, z, t, e)
         trace_jac = sum(eJ .* e, dims = 1)
         return vcat(mz, -trace_jac)
@@ -151,14 +151,14 @@ _trace_batched(x::AbstractArray{T,3}) where {T} =
 
 function _deterministic_ffjord(u, p, t, re, M, tdep)
     m = re(p)::M
-    z = u[1:end-1, :] |> untrack
+    z = u[1:end-1, :]
     vec, mz = jacobian_fn(m, z, t, tdep)
     trace_jac = _trace_batched(vec)
     return vcat(mz, -trace_jac)
 end
 
-function sample(n::TrackedFFJORD{B,M}, p = n.p; nsamples::Int = 1) where {B,M}
-    z_samples = CUDA.randn(size(n.re(p)[1].W, 2) - 1, nsamples)
+function sample(n::TrackedFFJORD{B,M}, indims::Int, p = n.p; nsamples::Int = 1) where {B,M}
+    z_samples = CUDA.randn(indims, nsamples)
     ffjord_ = (u, p, t) -> _deterministic_ffjord(u, p, t, n.re, M, n.time_dep)
     _z = TrackedArray(CUDA.zeros(Float32, 1, nsamples))
     prob = ODEProblem{false}(ffjord_, vcat(z_samples, _z), [n.tspan[2], n.tspan[1]], p)
