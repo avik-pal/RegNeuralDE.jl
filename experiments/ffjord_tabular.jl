@@ -167,8 +167,8 @@ _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
-train_loglikelihood[1] = 0 # data(loglikelihood(ffjord, train_dataloader))
-test_loglikelihood[1] = 0 # data(loglikelihood(ffjord, test_dataloader))
+train_loglikelihood[1] = data(loglikelihood(ffjord, train_dataloader))
+test_loglikelihood[1] = data(loglikelihood(ffjord, test_dataloader))
 
 logger(
     false,
@@ -200,7 +200,7 @@ for epoch = 1:EPOCHS
         x = x_ |> gpu
 
         start_time = time()
-        gs = Tracker.gradient(p -> loss_function(x, ffjord, p; λᵣ = λᵣ, notrack = true), ps...)
+        gs = Tracker.gradient(p -> loss_function(x, ffjord, p; λᵣ = λᵣ, notrack = false), ps...)
         update_parameters!(ps, gs, opt)
         timing += time() - start_time
 
@@ -216,7 +216,7 @@ for epoch = 1:EPOCHS
     inference_runtimes[epoch+1] = time() - start_time
     nfe_counts[epoch+1] = nfe
 
-    train_loglikelihood[epoch+1] = 0 # data(loglikelihood(ffjord, train_dataloader))
+    train_loglikelihood[epoch+1] = data(loglikelihood(ffjord, train_dataloader))
     test_loglikelihood[epoch+1] = data(loglikelihood(ffjord, test_dataloader))
 
     logger(

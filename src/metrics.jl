@@ -17,11 +17,14 @@ end
 function loglikelihood(model, data; batches = length(data))
     total_loglikelihood = 0.0f0
     total = 0
-    for (i, x) in enumerate(data)
+    for (i, x_) in enumerate(data)
+        x = x_ |> gpu
         i > batches && break
         res = model(x |> track)
         total_loglikelihood += sum(res[1])
         total += size(x, 2)
+        x_ = nothing
+        GC.gc(true)
     end
     return total_loglikelihood / total
 end

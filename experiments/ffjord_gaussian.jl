@@ -156,7 +156,7 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-const dummy_data = train_dataloader.data[:, 1:BATCH_SIZE]
+const dummy_data = train_dataloader.data[:, 1:BATCH_SIZE] |> gpu
 _start_time = time()
 _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
@@ -186,15 +186,22 @@ Tracker.gradient(p -> loss_function(dummy_data, ffjord, p; notrack = true), ffjo
 ## TRAINING
 for epoch = 1:EPOCHS
     λᵣ = λ_func(epoch - 1)
-    start_time = time()
+    timing = 0
 
-    for (i, x) in enumerate(train_dataloader)
+    for (i, x_) in enumerate(train_dataloader)
+        x = x_ |> gpu
+
+        start_time = time()
         gs = Tracker.gradient(p -> loss_function(x, ffjord, p; λᵣ = λᵣ), ps...)
         update_parameters!(ps, gs, opt)
+        timing += time() - start_time
+
+        x = nothing
+        GC.gc(true)
     end
 
     # Record the time per epoch
-    train_runtimes[epoch+1] = time() - start_time
+    train_runtimes[epoch+1] = timing
 
     # Record the NFE count
     start_time = time()
@@ -219,13 +226,13 @@ end
 logger(true, Dict())
 
 # Log the time to generate samples
-timings = []
-for i = 1:10
-    t = time()
-    sample(ffjord, 2, ps[1]; nsamples = BATCH_SIZE)
-    push!(timings, time() - t)
-end
-println("Time for Sampling $(BATCH_SIZE) data points: $(minimum(timings)) s")
+# timings = []
+# for i = 1:10
+#     t = time()
+#     sample(ffjord, 2, ps[1]; nsamples = BATCH_SIZE)
+#     push!(timings, time() - t)
+# end
+# println("Time for Sampling $(BATCH_SIZE) data points: $(minimum(timings)) s")
 #--------------------------------------
 
 #--------------------------------------

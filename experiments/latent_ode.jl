@@ -305,9 +305,10 @@ for epoch = 1:EPOCHS
     λᵣ = λᵣ_func(epoch - 1)
     λₖ = λₖ_func(epoch - 1)
 
-    start_time = time()
+    timing = 0
 
     for (i, (d, m, _, _, _, _)) in enumerate(train_dataloader)
+        start_time = time()
         gs = Tracker.gradient(
             (p1, p2, p3, p4) -> loss_function(
                 d,
@@ -325,10 +326,13 @@ for epoch = 1:EPOCHS
             ps...,
         )
         update_parameters!(ps, gs, opt)
+        timing += time() - start_time
+
+        GC.gc(true)
     end
 
     # Record the time per epoch
-    train_runtimes[epoch+1] = time() - start_time
+    train_runtimes[epoch+1] = timing
 
     # Record the NFE count
     start_time = time()
