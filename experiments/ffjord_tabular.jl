@@ -81,16 +81,16 @@ end
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
 train_dataloader, test_dataloader =
-    load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> gpu(x))
+    load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> cpu(x))
 
 # Leads to Spurious type promotion needs to be fixed before usage
-nn_dynamics = MLPDynamics(43, 100) |> gpu |> track
+const nn_dynamics = MLPDynamics(43, 100) |> gpu |> track
 # nn_dynamics =
 #     TDChain(Dense(44, 100, CUDA.tanh), Dense(101, 100, CUDA.tanh), Dense(101, 43)) |>
 #     gpu |>
 #     track
 
-ffjord = TrackedFFJORD(
+const ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
     true,
@@ -161,7 +161,7 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-const dummy_data = CUDA.rand(Float32, 43, BATCH_SIZE)
+const dummy_data = train_dataloader.data[:, 1:BATCH_SIZE] |> gpu
 _start_time = time()
 _logpx, _r1, _r2, _nfe, _sv = ffjord(dummy_data)
 inference_runtimes[1] = time() - _start_time
@@ -194,15 +194,21 @@ Tracker.gradient(
 ## TRAINING
 for epoch = 1:EPOCHS
     λᵣ = λ_func(epoch - 1)
-    start_time = time()
+    timing = 0
 
-    for (i, x) in enumerate(train_dataloader)
-        gs = Tracker.gradient(p -> loss_function(x, ffjord, p; λᵣ = λᵣ), ps...)
+    for (i, x_) in enumerate(train_dataloader)
+        x = x_ |> gpu
+
+        start_time = time()
+        gs = Tracker.gradient(p -> loss_function(x, ffjord, p; λᵣ = λᵣ, notrack = true), ps...)
         update_parameters!(ps, gs, opt)
+        timing += time() - start_time
+
+        x = nothing
     end
 
     # Record the time per epoch
-    train_runtimes[epoch+1] = time() - start_time
+    train_runtimes[epoch+1] = timing
 
     # Record the NFE count
     start_time = time()
@@ -211,7 +217,7 @@ for epoch = 1:EPOCHS
     nfe_counts[epoch+1] = nfe
 
     train_loglikelihood[epoch+1] = 0 # data(loglikelihood(ffjord, train_dataloader))
-    test_loglikelihood[epoch+1] = 0 # data(loglikelihood(ffjord, test_dataloader))
+    test_loglikelihood[epoch+1] = data(loglikelihood(ffjord, test_dataloader))
 
     logger(
         false,
