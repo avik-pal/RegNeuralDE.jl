@@ -84,7 +84,7 @@ train_dataloader, test_dataloader =
     load_miniboone(BATCH_SIZE, "data/miniboone.npy", 0.8, x -> cpu(x))
 
 # Leads to Spurious type promotion needs to be fixed before usage
-const nn_dynamics = MLPDynamics(43, 100) |> gpu |> track
+const nn_dynamics = MLPDynamics(43, 860) |> gpu |> track
 # nn_dynamics =
 #     TDChain(Dense(44, 100, CUDA.tanh), Dense(101, 100, CUDA.tanh), Dense(101, 43)) |>
 #     gpu |>
@@ -93,7 +93,7 @@ const nn_dynamics = MLPDynamics(43, 100) |> gpu |> track
 const ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
-    true,
+    false,
     REGULARIZE,
     Tsit5(),
     save_everystep = false,
@@ -109,8 +109,8 @@ opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-3))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
-λ₀ = 1.0f3
-λ₁ = 5.0f2
+λ₀ = 5.0f3
+λ₁ = 1.0f3
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)

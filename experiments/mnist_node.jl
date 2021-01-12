@@ -56,7 +56,7 @@ end
 #--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> gpu(track(x)))
+train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> cpu(x))
 
 # Define the models
 mlp_dynamics = MLPDynamics(784, 100)
@@ -148,7 +148,7 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-dummy_data = rand(Float32, 28, 28, 1, BATCH_SIZE) |> track |> gpu
+dummy_data = train_dataloader.data[:, 1:BATCH_SIZE] |> gpu |> track
 stime = time()
 _, _nfe, _ = node(dummy_data; func = save_func)
 inference_runtimes[1] = time() - stime
@@ -193,7 +193,10 @@ for epoch = 1:EPOCHS
     λ = λ_func(epoch - 1)
     timing = 0
 
-    for (i, (x, y)) in enumerate(train_dataloader)
+    for (i, (x_, y_)) in enumerate(train_dataloader)
+        x = x_ |> gpu
+        y = y_ |> gpu
+
         start_time = time()
         gs = Tracker.gradient(
             (p1, p2, p3) -> loss_function(x, y, node, p1, p2, p3; λ = λ),
@@ -202,6 +205,7 @@ for epoch = 1:EPOCHS
         update_parameters!(ps, gs, opt)
         timing += time() - start_time
 
+        x = y = nothing
         GC.gc(true)
     end
 

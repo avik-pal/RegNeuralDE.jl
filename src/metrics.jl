@@ -4,12 +4,15 @@ classify(x) = argmax.(eachcol(x))
 function accuracy(model, data; batches = length(data))
     total_correct = 0
     total = 0
-    for (i, (x, y)) in enumerate(collect(data))
+    for (i, (x_, y)) in enumerate(collect(data))
         i > batches && break
+        x = x_ |> gpu
         target_class = classify(cpu(y))
         predicted_class = classify(cpu(model(x |> track)[1]))
         total_correct += sum(target_class .== predicted_class)
         total += length(target_class)
+        x_ = nothing
+        GC.gc(true)
     end
     return total_correct * 100 / total
 end
@@ -18,8 +21,8 @@ function loglikelihood(model, data; batches = length(data))
     total_loglikelihood = 0.0f0
     total = 0
     for (i, x_) in enumerate(data)
-        x = x_ |> gpu
         i > batches && break
+        x = x_ |> gpu
         res = model(x |> track)
         total_loglikelihood += sum(res[1])
         total += size(x, 2)
