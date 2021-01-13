@@ -1,7 +1,7 @@
 #--------------------------------------
 ## LOAD PACKAGES
 using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, Random, Statistics
-using YAML, Dates, BSON
+using YAML, Dates, BSON, NNlib
 using CUDA
 using RegNeuralODE: loglikelihood
 using Flux.Optimise: update!
@@ -36,44 +36,75 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 
 #--------------------------------------
 # CUSTOM NN DYNAMICS
-struct MLPDynamics{T}
-    W1::T
-    W2::T
-    W3::T
-    B1::T
-    B2::T
-    B3::T
+function NNlib.σ(x)
+    t = CUDA.exp(-abs(x))
+    ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
+end
+
+NNlib.softplus(x) = ifelse(x > 0, x + CUDA.log1p(CUDA.exp(-x)), CUDA.log1p(CUDA.exp(x)))
+
+_transpose(x) = permutedims(x, (2, 1))
+
+struct ConcatSquashLinear{LW,LB,BW,BB,GW}
+    layer_W::LW
+    layer_B::LB
+    bias_W::BW
+    bias_B::BB
+    gate_W::GW
+end
+
+ConcatSquashLinear(in_dims::Int, out_dims::Int) =
+    ConcatSquashLinear(
+        Flux.glorot_uniform(out_dims, in_dims),
+        zeros(Float32, out_dims, 1),
+        Flux.glorot_uniform(out_dims, 1),
+        zeros(Float32, out_dims, 1),
+        Flux.glorot_uniform(out_dims, 1)
+    )
+
+@functor ConcatSquashLinear
+
+(csl::ConcatSquashLinear)(x, t) =
+    (csl.layer_W * x .+ csl.layer_B) .* σ.(csl.gate_W * t) .+ (csl.bias_W * t .+ csl.bias_B)
+
+function forw_n_back(csl::ConcatSquashLinear, x, t)
+    z1 = csl.layer_W * x .+ csl.layer_B
+    z2 = σ.(csl.gate_W * t)
+    z3 = csl.bias_W * t .+ csl.bias_B
+    r = @. z1 * z2 + z3
+
+    return r, e -> _transpose(csl.layer_W .* z2) * e
+end
+
+struct MLPDynamics{LW,LB,BW,BB,GW}
+    csl1::ConcatSquashLinear{LW,LB,BW,BB,GW}
+    csl2::ConcatSquashLinear{LW,LB,BW,BB,GW}
+    csl3::ConcatSquashLinear{LW,LB,BW,BB,GW}
 end
 
 @functor MLPDynamics
 
-function MLPDynamics(dims::Int, hsize::Int)
-    return MLPDynamics(
-        Flux.glorot_uniform(hsize, dims),
-        Flux.glorot_uniform(hsize, hsize),
-        Flux.glorot_uniform(dims, hsize),
-        zeros(Float32, hsize, 1),
-        zeros(Float32, hsize, 1),
-        zeros(Float32, dims, 1),
+MLPDynamics(in_dims::Int, hsize::Int) =
+    MLPDynamics(
+        ConcatSquashLinear(in_dims, hsize),
+        ConcatSquashLinear(hsize, hsize),
+        ConcatSquashLinear(hsize, in_dims)
     )
+
+function (nn::MLPDynamics)(x, t)
+    _t = CUDA.ones(1, 1) .* t
+    return nn.csl3(softplus.(nn.csl2(softplus.(nn.csl1(x, _t)), _t)), _t)
 end
 
-(m::MLPDynamics)(x) = m.W3 * CUDA.tanh.(m.W2 * CUDA.tanh.(m.W1 * x .+ m.B1) .+ m.B2) .+ m.B3
+function forw_n_back(nn::MLPDynamics, x, t, e)
+    _t = CUDA.ones(1, 1) .* t
+    z1, back1 = forw_n_back(nn.csl1, x, _t)
+    tz1 = softplus.(z1)
+    z2, back2 = forw_n_back(nn.csl2, tz1, _t)
+    tz2 = softplus.(z2)
+    z3, back3 = forw_n_back(nn.csl3, tz2, _t)
 
-_transpose(x) = permutedims(x, (2, 1))
-
-function forw_n_back(m::MLPDynamics, x, t, e)
-    # x -> N x B, e -> N x B
-    z1 = m.W1 * x .+ m.B1           # H x B
-    tz1 = CUDA.tanh.(z1)            # H x B
-    dtz1 = @. 1 - CUDA.pow(tz1, 2)  # H x B
-    z2 = m.W2 * tz1 .+ m.B2         # H x B
-    tz2 = CUDA.tanh.(z2)            # H x B
-    dtz2 = @. 1 - CUDA.pow(tz2, 2)  # H x B
-    z3 = m.W3 * tz2 .+ m.B3         # N x B
-
-    eJ = _transpose(m.W1) * (dtz1 .* (_transpose(m.W2) * (dtz2 .* (_transpose(m.W3) * e))))
-    return z3, eJ
+    return z3, back1(σ.(z1) .* back2(σ.(z2) .* back3(e)))
 end
 #--------------------------------------
 
@@ -88,7 +119,7 @@ nn_dynamics = MLPDynamics(2, 16) |> track |> gpu
 ffjord = TrackedFFJORD(
     nn_dynamics,
     [0.0f0, 1.0f0],
-    false,
+    true,
     REGULARIZE,
     Tsit5(),
     save_everystep = false,
@@ -100,12 +131,12 @@ ffjord = TrackedFFJORD(
 
 ps = Flux.trainable(ffjord)
 
-opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-3))
+opt = Flux.Optimise.Optimiser(WeightDecay(1e-5), ADAM(4e-2))
 
 # Anneal the regularization so that it doesn't overpower the
 # the main objective
-λ₀ = 1.0f3
-λ₁ = 1.0f2
+λ₀ = 2.0f3
+λ₁ = 1.0f3
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
@@ -226,13 +257,13 @@ end
 logger(true, Dict())
 
 # Log the time to generate samples
-# timings = []
-# for i = 1:10
-#     t = time()
-#     sample(ffjord, 2, ps[1]; nsamples = BATCH_SIZE)
-#     push!(timings, time() - t)
-# end
-# println("Time for Sampling $(BATCH_SIZE) data points: $(minimum(timings)) s")
+timings = []
+for i = 1:10
+    t = time()
+    sample(ffjord, 2, ps[1]; nsamples = BATCH_SIZE)
+    push!(timings, time() - t)
+end
+println("Time for Sampling $(BATCH_SIZE) data points: $(minimum(timings)) s")
 #--------------------------------------
 
 #--------------------------------------

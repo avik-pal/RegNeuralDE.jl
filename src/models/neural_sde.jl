@@ -77,7 +77,7 @@ function (n::TrackedNeuralDSDE{true})(
     svcb = SavingCallback(func, sv)
     ff = SDEFunction{false}(dudt_, g, tgrad = DiffEqFlux.basic_tgrad)
     prob = SDEProblem{false}(ff, g, x, tspan, p)
-    solve(
+    sol = solve(
         prob,
         n.args...;
         sensealg = SensitivityADPassThrough(),

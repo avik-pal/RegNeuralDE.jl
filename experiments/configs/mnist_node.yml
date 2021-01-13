@@ -1,7 +1,7 @@
 name: MNIST Neural ODE
 seed: 1999
 hyperparameters:
-    batch_size: 256
+    batch_size: 512
     regularize: true
     type: error_est  # Possible Choices: error_est / stiff_est
     epochs: 75

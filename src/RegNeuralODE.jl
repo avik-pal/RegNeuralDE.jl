@@ -53,7 +53,17 @@ Base.convert(
         Transpose{Float32,CuArray{Float32,2}},
         Tuple{Base.MultiplicativeInverses.SignedMultiplicativeInverse{Int64}},
     },
-) = CuArray(x)
+) = CuArray{Float32,2}(x)
+
+Base.convert(
+    ::Type{CuArray{Float32,2}},
+    x::Base.ReshapedArray{
+        Float32,
+        2,
+        Adjoint{Float32,CuArray{Float32,2}},
+        Tuple{Base.MultiplicativeInverses.SignedMultiplicativeInverse{Int64}},
+    },
+) = CuArray{Float32,2}(x)
 
 # Include code
 include("dataset.jl")

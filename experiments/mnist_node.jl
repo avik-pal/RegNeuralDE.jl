@@ -148,7 +148,7 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-dummy_data = train_dataloader.data[:, 1:BATCH_SIZE] |> gpu |> track
+dummy_data = train_dataloader.data[1][:, :, :, 1:BATCH_SIZE] |> gpu |> track
 stime = time()
 _, _nfe, _ = node(dummy_data; func = save_func)
 inference_runtimes[1] = time() - stime
@@ -194,8 +194,8 @@ for epoch = 1:EPOCHS
     timing = 0
 
     for (i, (x_, y_)) in enumerate(train_dataloader)
-        x = x_ |> gpu
-        y = y_ |> gpu
+        x = x_ |> gpu |> track
+        y = Float32.(y_) |> gpu |> track
 
         start_time = time()
         gs = Tracker.gradient(

@@ -102,7 +102,7 @@ end
 ## MODEL + DATASET + TRAINING UTILS
 # Get the dataset
 train_dataloader, test_dataloader =
-    load_physionet(BATCH_SIZE, "data/physionet.bson", 0.8, x -> gpu(track(x)))
+    load_physionet(BATCH_SIZE, "data/physionet.bson", 0.8, x -> cpu(x))
 
 opt = Flux.Optimise.Optimiser(InvDecay(1e-5), AdaMax(0.01))
 
@@ -225,7 +225,10 @@ end
 function total_loss_on_dataset(model, dataloader)
     loss = 0.0f0
     count = 0
-    for (i, (d, m, _, _, _, _)) in enumerate(dataloader)
+    for (i, (d_, m_, _, _, _, _)) in enumerate(dataloader)
+        d = d_ |> track |> gpu
+        m = m_ |> track |> gpu
+
         x_ = vcat(d, m, _t)
         result, _, _, _, _ = model(x_)
 
@@ -235,6 +238,9 @@ function total_loss_on_dataset(model, dataloader)
 
         count += size(d, 3)
         loss += sum(sum(∇pred .^ 2, dims = (1, 2)) ./ sum(m, dims = (1, 2))) |> untrack
+
+        d = m = nothing
+        GC.gc(true)
     end
     return loss ./ count
 end
@@ -307,7 +313,10 @@ for epoch = 1:EPOCHS
 
     timing = 0
 
-    for (i, (d, m, _, _, _, _)) in enumerate(train_dataloader)
+    for (i, (d_, m_, _, _, _, _)) in enumerate(train_dataloader)
+        d = d_ |> gpu |> track
+        m = m_ |> gpu |> track
+
         start_time = time()
         gs = Tracker.gradient(
             (p1, p2, p3, p4) -> loss_function(
@@ -328,6 +337,7 @@ for epoch = 1:EPOCHS
         update_parameters!(ps, gs, opt)
         timing += time() - start_time
 
+        d = m = nothing
         GC.gc(true)
     end
 
