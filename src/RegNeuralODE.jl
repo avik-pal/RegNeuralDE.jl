@@ -82,6 +82,7 @@ export load_mnist, load_physionet, load_spiral2d, load_miniboone, load_gaussian_
 export TrackedNeuralODE,
     TrackedNeuralDSDE,
     ClassifierNODE,
+    ClassifierNSDE,
     TDChain,
     RecognitionRNN,
     TrackedFFJORD,

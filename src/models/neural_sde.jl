@@ -1,4 +1,4 @@
-struct TrackedNeuralDSDE{R,M1,M2,P,RE1,RE2,T,A,K} <: DiffEqFlux.NeuralDELayer
+struct TrackedNeuralDSDE{R,Z,M1,M2,P,RE1,RE2,T,A,K} <: DiffEqFlux.NeuralDELayer
     model1::M1
     model2::M2
     p::P
@@ -11,11 +11,13 @@ struct TrackedNeuralDSDE{R,M1,M2,P,RE1,RE2,T,A,K} <: DiffEqFlux.NeuralDELayer
     nfes::Vector{Int}
 
     function TrackedNeuralDSDE(model1, model2, tspan, regularize, args...; kwargs...)
+        return_multiple = get(kwargs, :save_everystep, false) || get(kwargs, :saveat, false)
         p1, re1 = Flux.destructure(model1)
         p2, re2 = Flux.destructure(model2)
         p = vcat(p1, p2)
         new{
             regularize,
+            return_multiple,
             typeof(model1),
             typeof(model2),
             typeof(p),
@@ -39,7 +41,7 @@ struct TrackedNeuralDSDE{R,M1,M2,P,RE1,RE2,T,A,K} <: DiffEqFlux.NeuralDELayer
     end
 end
 
-function (n::TrackedNeuralDSDE{false})(x, p = n.p; func = (u, t, int) -> 0)
+function (n::TrackedNeuralDSDE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
     function dudt_(u, p, t)
         n.nfes[1] += 1
         n.re1(p[1:n.len])(u)
@@ -59,7 +61,27 @@ function (n::TrackedNeuralDSDE{false})(x, p = n.p; func = (u, t, int) -> 0)
     return arr, nfe1, nfe2, nothing
 end
 
-function (n::TrackedNeuralDSDE{true})(
+function (n::TrackedNeuralDSDE{false,false})(x, p = n.p; func = (u, t, int) -> 0)
+    function dudt_(u, p, t)
+        n.nfes[1] += 1
+        n.re1(p[1:n.len])(u)
+    end
+    function g(u, p, t)
+        n.nfes[2] += 1
+        n.re2(p[n.len+1:end])(u)
+    end
+    tspan = _convert_tspan(n.tspan, p)
+    ff = SDEFunction{false}(dudt_, g, tgrad = DiffEqFlux.basic_tgrad)
+    prob = SDEProblem{false}(ff, g, x, tspan, p)
+    sol = solve(prob, n.args...; sensealg = SensitivityADPassThrough(), n.kwargs...)
+    arr = diffeqsol_to_trackedarray(sol)::TrackedArray{Float32,2,Array{Float32,2}}
+    nfe1, nfe2 = n.nfes
+    n.nfes .= 0
+
+    return arr, nfe1, nfe2, nothing
+end
+
+function (n::TrackedNeuralDSDE{true,true})(
     x,
     p = n.p;
     func = (u, t, integrator) -> integrator.EEst * integrator.dt,
@@ -85,6 +107,38 @@ function (n::TrackedNeuralDSDE{true})(
         n.kwargs...,
     )
     arr = diffeqsol_to_3dtrackedarray(sol)::TrackedArray{Float32,3,Array{Float32,3}}
+    nfe1, nfe2 = n.nfes
+    n.nfes .= 0
+
+    return arr, nfe1, nfe2, sv
+end
+
+function (n::TrackedNeuralDSDE{true,false})(
+    x,
+    p = n.p;
+    func = (u, t, integrator) -> integrator.EEst * integrator.dt,
+)
+    function dudt_(u, p, t)
+        n.nfes[1] += 1
+        n.re1(p[1:n.len])(u)
+    end
+    function g(u, p, t)
+        n.nfes[2] += 1
+        n.re2(p[n.len+1:end])(u)
+    end
+    tspan = _convert_tspan(n.tspan, p)
+    sv = SavedValues(eltype(tspan), eltype(p))
+    svcb = SavingCallback(func, sv)
+    ff = SDEFunction{false}(dudt_, g, tgrad = DiffEqFlux.basic_tgrad)
+    prob = SDEProblem{false}(ff, g, x, tspan, p)
+    sol = solve(
+        prob,
+        n.args...;
+        sensealg = SensitivityADPassThrough(),
+        callback = svcb,
+        n.kwargs...,
+    )
+    arr = diffeqsol_to_trackedarray(sol)::TrackedArray{Float32,2,Array{Float32,2}}
     nfe1, nfe2 = n.nfes
     n.nfes .= 0
 
