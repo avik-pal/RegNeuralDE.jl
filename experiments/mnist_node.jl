@@ -58,13 +58,51 @@ end
 # Get the dataset
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> cpu(x))
 
+if REG_TYPE == "error_est"
+    # Anneal the regularization so that it doesn't overpower the
+    # the main objective
+    λ₀ = 1.0f2
+    λ₁ = 1.0f1
+    save_func(u, t, integrator) = integrator.EEst * integrator.dt
+    solver = Tsit5()
+elseif REG_TYPE == "stiff_est"
+    # No annealing is generally needed for stiff_est
+    λ₀ = 1.0f2
+    λ₁ = 1.0f2
+    const stability_size =
+        Tracker.TrackedReal(Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
+    function save_func(u, t, integrator)
+        stiff_est = abs(integrator.eigen_est * integrator.dt)
+        return stability_size * ((iszero(stiff_est) || isnan(stiff_est)) ? 0 : stiff_est)
+    end
+    solver = AutoTsit5(Tsit5())
+elseif REG_TYPE == "error_stiff_est"
+    λ₀ = 1.0f2
+    λ₁ = 1.0f1
+    const mul_val = Tracker.TrackedReal(1.0f0)
+    const stability_size =
+        Tracker.TrackedReal(Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
+    function save_func(u, t, integrator)
+        err_est = integrator.EEst * integrator.dt
+        eest = Tracker.data(err_est)
+        stiff_est = integrator.eigen_est * integrator.dt
+        sest = Tracker.data(stiff_est)
+        return (
+            ((iszero(eest) || isnan(eest)) ? 0 : err_est) +
+            stability_size * ((iszero(sest) || isnan(sest)) ? 0 : stiff_est)
+        ) * mul_val
+    end
+    solver = AutoTsit5(Tsit5())
+else
+    solver = Tsit5()
+end
+k = log(λ₀ / λ₁) / EPOCHS
+# Exponential Decay
+λ_func(t) = λ₀ * exp(-k * t)
+
 # Define the models
 mlp_dynamics = MLPDynamics(784, 100)
 
-# AutoTsit5(Tsit5()) is simply Tsit5() since we don't want to switch to a
-# stiff solver. This "hack" allows us to construct a CompositeAlgorithm and
-# allows us to get the stiffness estimate from the solver itself.
-solver = REGULARIZE ? (REG_TYPE == "stiff_est" ? AutoTsit5(Tsit5()) : Tsit5()) : Tsit5()
 node = ClassifierNODE(
     Chain(x -> reshape(x, 784, :)) |> track |> gpu,
     TrackedNeuralODE(
@@ -84,28 +122,10 @@ ps = Flux.trainable(node)
 
 opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 
-if REG_TYPE == "error_est"
-    # Anneal the regularization so that it doesn't overpower the
-    # the main objective
-    λ₀ = 1.0f2
-    λ₁ = 1.0f1
-    save_func(u, t, integrator) = integrator.EEst * integrator.dt
-    get_savevals(x) = x
-else
-    # No annealing is generally needed for stiff_est
-    λ₀ = 1.0f2
-    λ₁ = 1.0f2
-    save_func(u, t, integrator) = abs(integrator.eigen_est * integrator.dt)
-    get_savevals(x) = filter(!iszero, x)
-end
-k = log(λ₀ / λ₁) / EPOCHS
-# Exponential Decay
-λ_func(t) = λ₀ * exp(-k * t)
-
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
     pred, _, sv = model(x, p1, p2, p3; func = save_func)
     cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
-    reg = REGULARIZE ? λ * mean(get_savevals(sv.saveval)) : zero(eltype(pred))
+    reg = REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     total_loss = cross_entropy + reg
     if !notrack
         ce_un = cross_entropy |> untrack

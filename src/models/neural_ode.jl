@@ -8,9 +8,7 @@ struct TrackedNeuralODE{R,Z,M,P,RE,T,A,K} <: DiffEqFlux.NeuralDELayer
     time_dep::Bool
 
     function TrackedNeuralODE(model, tspan, time_dep, regularize, args...; kwargs...)
-        return_multiple =
-            hasproperty(kwargs, :save_everystep) ? kwargs.save_everystep :
-            hasproperty(kwargs, :saveat)
+        return_multiple = get(kwargs, :save_everystep, false) || get(kwargs, :saveat, false)
         p, re = Flux.destructure(model)
         new{
             regularize,
@@ -135,7 +133,8 @@ end
     return res, nfe, sv
 end
 
-function solution(n::TrackedNeuralODE, x, p = n.p)
+function solution(n::TrackedNeuralODE, x, p = n.p; solver = nothing)
+    solver = isnothing(solver_override) ? n.args[1] : solver
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(n.tspan, p)
@@ -145,7 +144,7 @@ function solution(n::TrackedNeuralODE, x, p = n.p)
 
     sol = solve(
         prob,
-        n.args...;
+        solver;
         sensealg = SensitivityADPassThrough(),
         callback = nothing,
         n.kwargs...,

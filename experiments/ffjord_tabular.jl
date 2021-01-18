@@ -53,14 +53,13 @@ struct ConcatSquashLinear{LW,LB,BW,BB,GW}
     gate_W::GW
 end
 
-ConcatSquashLinear(in_dims::Int, out_dims::Int) =
-    ConcatSquashLinear(
-        Flux.glorot_uniform(out_dims, in_dims),
-        zeros(Float32, out_dims, 1),
-        Flux.glorot_uniform(out_dims, 1),
-        zeros(Float32, out_dims, 1),
-        Flux.glorot_uniform(out_dims, 1)
-    )
+ConcatSquashLinear(in_dims::Int, out_dims::Int) = ConcatSquashLinear(
+    Flux.glorot_uniform(out_dims, in_dims),
+    zeros(Float32, out_dims, 1),
+    Flux.glorot_uniform(out_dims, 1),
+    zeros(Float32, out_dims, 1),
+    Flux.glorot_uniform(out_dims, 1),
+)
 
 @functor ConcatSquashLinear
 
@@ -84,12 +83,11 @@ end
 
 @functor MLPDynamics
 
-MLPDynamics(in_dims::Int, hsize::Int) =
-    MLPDynamics(
-        ConcatSquashLinear(in_dims, hsize),
-        ConcatSquashLinear(hsize, hsize),
-        ConcatSquashLinear(hsize, in_dims)
-    )
+MLPDynamics(in_dims::Int, hsize::Int) = MLPDynamics(
+    ConcatSquashLinear(in_dims, hsize),
+    ConcatSquashLinear(hsize, hsize),
+    ConcatSquashLinear(hsize, in_dims),
+)
 
 function (nn::MLPDynamics)(x, t)
     _t = CUDA.ones(1, 1) .* t
@@ -211,10 +209,7 @@ logger(
 
 #--------------------------------------
 ## WARMSTART THE GRADIENT COMPUTATION
-Tracker.gradient(
-    p -> loss_function(dummy_data, ffjord, p; notrack = true),
-    ffjord.p,
-)
+Tracker.gradient(p -> loss_function(dummy_data, ffjord, p; notrack = true), ffjord.p)
 #--------------------------------------
 
 #--------------------------------------
@@ -227,7 +222,10 @@ for epoch = 1:EPOCHS
         x = x_ |> gpu
 
         start_time = time()
-        gs = Tracker.gradient(p -> loss_function(x, ffjord, p; λᵣ = λᵣ, notrack = false), ps...)
+        gs = Tracker.gradient(
+            p -> loss_function(x, ffjord, p; λᵣ = λᵣ, notrack = false),
+            ps...,
+        )
         update_parameters!(ps, gs, opt)
         timing += time() - start_time
 

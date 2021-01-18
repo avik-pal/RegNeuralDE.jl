@@ -111,15 +111,15 @@ version = "0.8.3"
 
 [[ChainRules]]
 deps = ["ChainRulesCore", "Compat", "LinearAlgebra", "Random", "Reexport", "Requires", "Statistics"]
-git-tree-sha1 = "31b28f5123afa5e5ca0c885e4051896032754578"
+git-tree-sha1 = "011631a8b309f5ad49a53f6353d90cf2dd569a04"
 uuid = "082447d4-558c-5d27-93f4-14fc19e9eca2"
-version = "0.7.45"
+version = "0.7.47"
 
 [[ChainRulesCore]]
-deps = ["LinearAlgebra", "SparseArrays"]
-git-tree-sha1 = "0acfdec745cb4cb38ad23c8668a1b7e58b42594a"
+deps = ["Compat", "LinearAlgebra", "SparseArrays"]
+git-tree-sha1 = "89a0b14325d0f02f9caed7c8ba91181a5d254874"
 uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-version = "0.9.25"
+version = "0.9.26"
 
 [[CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
@@ -296,9 +296,9 @@ version = "0.24.10"
 
 [[DistributionsAD]]
 deps = ["Adapt", "ChainRules", "ChainRulesCore", "Compat", "DiffRules", "Distributions", "FillArrays", "ForwardDiff", "LinearAlgebra", "NaNMath", "PDMats", "Random", "Requires", "SpecialFunctions", "StaticArrays", "StatsBase", "StatsFuns", "ZygoteRules"]
-git-tree-sha1 = "6aace6fff56ed9fde1bc50e14b5e9a3d16b3dedd"
+git-tree-sha1 = "bfd96554c10aae95323d54b09346b1bed1baecb6"
 uuid = "ced4e74d-a319-5a8a-b0ac-84af2272839c"
-version = "0.6.15"
+version = "0.6.16"
 
 [[DocStringExtensions]]
 deps = ["LibGit2", "Markdown", "Pkg", "Test"]
@@ -545,10 +545,10 @@ uuid = "83e8ac13-25f8-5344-8a64-a9f2b223428f"
 version = "0.5.0"
 
 [[IntelOpenMP_jll]]
-deps = ["Libdl", "Pkg"]
-git-tree-sha1 = "fb8e1c7a5594ba56f9011310790e03b5384998d6"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "d979e54b71da82f3a65b62553da4fc3d18c9004c"
 uuid = "1d5cc7b8-4909-519e-a0f8-d0f5ad9712d0"
-version = "2018.0.3+0"
+version = "2018.0.3+2"
 
 [[InteractiveUtils]]
 deps = ["Markdown"]
@@ -1209,7 +1209,9 @@ version = "0.9.6"
 
 [[StochasticDiffEq]]
 deps = ["ArrayInterface", "DataStructures", "DiffEqBase", "DiffEqJump", "DiffEqNoiseProcess", "FillArrays", "FiniteDiff", "ForwardDiff", "LinearAlgebra", "Logging", "MuladdMacro", "NLsolve", "OrdinaryDiffEq", "Random", "RandomNumbers", "RecursiveArrayTools", "Reexport", "SparseArrays", "SparseDiffTools", "StaticArrays", "UnPack"]
-git-tree-sha1 = "ee5f4b4a5a0a2aabc3d6e2afb58222fddc1ab97c"
+git-tree-sha1 = "685dc19a962b874b9e98afd5b30edc65f03e4eb9"
+repo-rev = "ap/tracker_fix"
+repo-url = "https://github.com/avik-pal/StochasticDiffEq.jl"
 uuid = "789caeaf-c7a9-5a7d-9973-96adeb23e2a0"
 version = "6.30.1"
 
