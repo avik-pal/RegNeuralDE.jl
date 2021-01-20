@@ -88,13 +88,14 @@ function (m::ClassifierNSDE{L1,L2,L3})(
     nsde_kwargs...,
 ) where {L1,L2,L3}
     # Neural SDE right now works only with CPU Inputs
+    bsize = size(x)[end]
     x = _expand(x, trajectories) |> track
     presde = m.presde(p1)::L1
     x = presde(x)
     x, nfe1, nfe2, sv = m.nsde(x, p2; nsde_kwargs...)
     postsde = m.postsde(p3)::L3
     z = postsde(x)
-    z = mean(reshape(z, size(z, 1), :, trajectories), dims = 3)
+    z = reshape(mean(reshape(z, size(z, 1), :, trajectories), dims = 3), :, bsize)
     return z, nfe1, nfe2, sv
 end
 

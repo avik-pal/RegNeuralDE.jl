@@ -102,7 +102,6 @@ function loss_function(
             ),
         )
     end
-    @show total_loss
     return total_loss
 end
 #--------------------------------------
@@ -191,7 +190,6 @@ for epoch = 1:EPOCHS
         )
         update_parameters!(ps, gs, opt)
         timing += time() - start_time
-        @show i, timing
 
         x = y = nothing
         GC.gc(true)

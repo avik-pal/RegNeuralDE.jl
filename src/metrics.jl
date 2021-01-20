@@ -6,9 +6,9 @@ function accuracy(model, data; batches = length(data), no_gpu::Bool = false, kwa
     total = 0
     for (i, (x_, y)) in enumerate(collect(data))
         i > batches && break
-        x = no_gpu ? x_ : (x_ |> gpu)
+        x = no_gpu ? x_ : (x_ |> gpu |> track)
         target_class = classify(cpu(y))
-        predicted_class = classify(cpu(model(x |> track; kwargs...)[1]))
+        predicted_class = classify(cpu(model(x; kwargs...)[1] |> untrack))
         total_correct += sum(target_class .== predicted_class)
         total += length(target_class)
         x_ = nothing
