@@ -1,6 +1,6 @@
 #--------------------------------------
 ## LOAD PACKAGES
-using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker
+using RegNeuralODE, StochasticDiffEq, Flux, DiffEqFlux, Tracker
 using YAML, Dates, BSON, Random, Statistics, Printf
 using CUDA
 using RegNeuralODE: accuracy
@@ -8,12 +8,14 @@ using Flux: @functor
 using Tracker: TrackedReal
 import Base.show
 
+# This code will not work on GPU. Please trick your system to not detect GPUs
+# using `CUDA_VISIBLE_DEVICES=""`. Will get this fixed soon
 CUDA.allowscalar(false)
 #--------------------------------------
 
 #--------------------------------------
 ## CONFIGURATION
-config_file = joinpath(pwd(), "experiments", "configs", "mnist_node.yml")
+config_file = joinpath(pwd(), "experiments", "configs", "mnist_nsde.yml")
 config = YAML.load_file(config_file)
 
 Random.seed!(config["seed"])
@@ -35,28 +37,9 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 #--------------------------------------
 
 #--------------------------------------
-## NEURAL NETWORK
-# The dynamics of the Neural ODE are time dependent
-struct MLPDynamics{D1,D2}
-    dense_1::D1
-    dense_2::D2
-end
-
-@functor MLPDynamics
-
-MLPDynamics(in::Integer, hidden::Integer) =
-    MLPDynamics(Dense(in + 1, hidden, CUDA.tanh), Dense(hidden + 1, in, CUDA.tanh))
-
-function (mlp::MLPDynamics)(x::AbstractMatrix, t::TrackedReal)
-    _t = CUDA.ones(Float32, 1, size(x, 2)) .* t
-    return mlp.dense_2(vcat(mlp.dense_1(vcat(x, _t)), _t))
-end
-#--------------------------------------
-
-#--------------------------------------
 ## SETUP THE MODELS + DATASET + TRAINING UTILS
 # Get the dataset
-train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> cpu(x))
+train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> flatten(Float32.(x)))
 
 if REG_TYPE == "error_est"
     # Anneal the regularization so that it doesn't overpower the
@@ -64,66 +47,45 @@ if REG_TYPE == "error_est"
     λ₀ = 1.0f2
     λ₁ = 1.0f1
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
-    solver = Tsit5()
-elseif REG_TYPE == "stiff_est"
-    # No annealing is generally needed for stiff_est
-    λ₀ = 1.0f2
-    λ₁ = 1.0f2
-    const stability_size =
-        Tracker.TrackedReal(1 / Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
-    function save_func(u, t, integrator)
-        stiff_est = abs(integrator.eigen_est * integrator.dt)
-        return stability_size * ((iszero(stiff_est) || isnan(stiff_est)) ? 0 : stiff_est)
-    end
-    solver = AutoTsit5(Tsit5())
-elseif REG_TYPE == "error_stiff_est"
-    λ₀ = 1.0f2
-    λ₁ = 1.0f1
-    const mul_val = Tracker.TrackedReal(1.0f0)
-    const stability_size =
-        Tracker.TrackedReal(1 / Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
-    function save_func(u, t, integrator)
-        err_est = integrator.EEst * integrator.dt
-        eest = Tracker.data(err_est)
-        stiff_est = integrator.eigen_est * integrator.dt
-        sest = Tracker.data(stiff_est)
-        return (
-            ((iszero(eest) || isnan(eest)) ? 0 : err_est) +
-            stability_size * ((iszero(sest) || isnan(sest)) ? 0 : stiff_est)
-        ) * mul_val
-    end
-    solver = AutoTsit5(Tsit5())
+    solver = SOSRI()
 else
-    solver = Tsit5()
+    solver = SOSRI()
 end
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
 
-# Define the models
-mlp_dynamics = MLPDynamics(784, 100)
-
-node = ClassifierNODE(
-    Chain(x -> reshape(x, 784, :)) |> track |> gpu,
-    TrackedNeuralODE(
-        mlp_dynamics |> track |> gpu,
+nsde = ClassifierNSDE(
+    Dense(784, 32) |> track,
+    TrackedNeuralDSDE(
+        Chain(Dense(32, 64, tanh), Dense(64, 32)) |> track,
+        Dense(32, 32) |> track,
         [0.0f0, 1.0f0],
-        true,
         REGULARIZE,
         solver,
         save_everystep = false,
-        reltol = 1.4f-8,
-        abstol = 1.4f-8,
+        reltol = 1.4f-1,
+        abstol = 1.4f-1,
         save_start = false,
     ),
-    Dense(784, 10) |> track |> gpu,
+    Dense(32, 10) |> track,
 )
-ps = Flux.trainable(node)
+ps = Flux.trainable(nsde)
 
 opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 
-function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
-    pred, _, sv = model(x, p1, p2, p3; func = save_func)
+function loss_function(
+    x,
+    y,
+    model,
+    p1,
+    p2,
+    p3;
+    trajectories = 1,
+    λ = 1.0f2,
+    notrack = false,
+)
+    pred, _, _, sv = model(x, p1, p2, p3; trajectories = trajectories, func = save_func)
     cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
     reg = REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
     total_loss = cross_entropy + reg
@@ -140,13 +102,15 @@ function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
             ),
         )
     end
+    @show total_loss
     return total_loss
 end
 #--------------------------------------
 
 #--------------------------------------
 ## LOGGING UTILITIES
-nfe_counts = Vector{Float64}(undef, EPOCHS + 1)
+nfe1_counts = Vector{Float64}(undef, EPOCHS + 1)
+nfe2_counts = Vector{Float64}(undef, EPOCHS + 1)
 train_accuracies = Vector{Float64}(undef, EPOCHS + 1)
 test_accuracies = Vector{Float64}(undef, EPOCHS + 1)
 train_runtimes = Vector{Float64}(undef, EPOCHS + 1)
@@ -156,7 +120,8 @@ train_runtimes[1] = 0
 logger = table_logger(
     [
         "Epoch Number",
-        "NFE Count",
+        "NFE1 Count",
+        "NFE2 Count",
         "Train Accuracy",
         "Test Accuracy",
         "Train Runtime",
@@ -168,20 +133,22 @@ logger = table_logger(
 
 #--------------------------------------
 ## RECORD DETAILS BEFORE TRAINING STARTS
-dummy_data = train_dataloader.data[1][:, :, :, 1:BATCH_SIZE] |> gpu |> track
+dummy_data = train_dataloader.data[1][:, 1:BATCH_SIZE]
 stime = time()
-_, _nfe, _ = node(dummy_data; func = save_func)
+_, _nfe1, _nfe2, _ = nsde(dummy_data; func = save_func)
 inference_runtimes[1] = time() - stime
 train_runtimes[1] = 0.0
-nfe_counts[1] = _nfe
-train_accuracies[1] = accuracy(node, train_dataloader)
-test_accuracies[1] = accuracy(node, test_dataloader)
+nfe1_counts[1] = _nfe1
+nfe2_counts[1] = _nfe2
+train_accuracies[1] = accuracy(nsde, train_dataloader; no_gpu = true, trajectories = 10)
+test_accuracies[1] = accuracy(nsde, test_dataloader; no_gpu = true, trajectories = 10)
 
 logger(
     false,
     Dict(),
     0.0,
-    nfe_counts[1],
+    nfe1_counts[1],
+    nfe2_counts[1],
     train_accuracies[1],
     test_accuracies[1],
     train_runtimes[1],
@@ -192,12 +159,12 @@ logger(
 #--------------------------------------
 ## WARMSTART THE GRADIENT COMPUTATION
 y_ = zeros(Float32, 10, 1)
-y_[1, 1] = 1.0
+y_[1, :] .= 1.0
 _ = Tracker.gradient(
     (p1, p2, p3) -> loss_function(
-        rand(Float32, 28, 28, 1, 1) |> gpu |> track,
-        y_ |> gpu |> track,
-        node,
+        rand(Float32, 784, 1),
+        y_,
+        nsde,
         p1,
         p2,
         p3;
@@ -214,16 +181,17 @@ for epoch = 1:EPOCHS
     timing = 0
 
     for (i, (x_, y_)) in enumerate(train_dataloader)
-        x = x_ |> gpu |> track
-        y = Float32.(y_) |> gpu |> track
+        x = x_
+        y = y_
 
         start_time = time()
         gs = Tracker.gradient(
-            (p1, p2, p3) -> loss_function(x, y, node, p1, p2, p3; λ = λ),
+            (p1, p2, p3) -> loss_function(x, y, nsde, p1, p2, p3; λ = λ),
             ps...,
         )
         update_parameters!(ps, gs, opt)
         timing += time() - start_time
+        @show i, timing
 
         x = y = nothing
         GC.gc(true)
@@ -239,14 +207,15 @@ for epoch = 1:EPOCHS
     nfe_counts[epoch+1] = nfe
 
     # Test and Train Accuracy
-    train_accuracies[epoch+1] = accuracy(node, train_dataloader)
-    test_accuracies[epoch+1] = accuracy(node, test_dataloader)
+    train_accuracies[epoch+1] = accuracy(nsde, train_dataloader; no_gpu = true, trajectories = 10)
+    test_accuracies[epoch+1] = accuracy(nsde, test_dataloader; no_gpu = true, trajectories = 10)
 
     logger(
         false,
         Dict(),
         epoch,
-        nfe_counts[epoch+1],
+        nfe1_counts[epoch+1],
+        nfe2_counts[epoch+1],
         train_accuracies[epoch+1],
         test_accuracies[epoch+1],
         train_runtimes[epoch+1],

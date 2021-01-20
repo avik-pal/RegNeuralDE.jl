@@ -98,5 +98,5 @@ function (m::ClassifierNSDE{L1,L2,L3})(
     return z, nfe1, nfe2, sv
 end
 
-_expand(x::AbstractArray{<:Number, 4}, d::Int) = repeat(x, 1, 1, 1, d)
-_expand(x::AbstractArray{<:Number, 2}, d::Int) = repeat(x, 1, d)
+_expand(x::AbstractArray{<:Number,4}, d::Int) = repeat(x, 1, 1, 1, d)
+_expand(x::AbstractArray{<:Number,2}, d::Int) = repeat(x, 1, d)

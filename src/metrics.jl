@@ -1,14 +1,14 @@
 # Metrics
 classify(x) = argmax.(eachcol(x))
 
-function accuracy(model, data; batches = length(data))
+function accuracy(model, data; batches = length(data), no_gpu::Bool = false, kwargs...)
     total_correct = 0
     total = 0
     for (i, (x_, y)) in enumerate(collect(data))
         i > batches && break
-        x = x_ |> gpu
+        x = no_gpu ? x_ : (x_ |> gpu)
         target_class = classify(cpu(y))
-        predicted_class = classify(cpu(model(x |> track)[1]))
+        predicted_class = classify(cpu(model(x |> track; kwargs...)[1]))
         total_correct += sum(target_class .== predicted_class)
         total += length(target_class)
         x_ = nothing

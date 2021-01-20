@@ -8,7 +8,7 @@ struct TrackedNeuralODE{R,Z,M,P,RE,T,A,K} <: DiffEqFlux.NeuralDELayer
     time_dep::Bool
 
     function TrackedNeuralODE(model, tspan, time_dep, regularize, args...; kwargs...)
-        return_multiple = get(kwargs, :save_everystep, false) || get(kwargs, :saveat, false)
+        return_multiple = get(kwargs, :save_everystep, false) || haskey(kwargs, :saveat)
         p, re = Flux.destructure(model)
         new{
             regularize,

@@ -1,0 +1,7 @@
+name: MNIST Neural SDE
+seed: 1999
+hyperparameters:
+    batch_size: 256
+    regularize: true
+    type: error_est
+    epochs: 20

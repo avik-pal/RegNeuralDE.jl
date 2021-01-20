@@ -11,7 +11,7 @@ struct TrackedNeuralDSDE{R,Z,M1,M2,P,RE1,RE2,T,A,K} <: DiffEqFlux.NeuralDELayer
     nfes::Vector{Int}
 
     function TrackedNeuralDSDE(model1, model2, tspan, regularize, args...; kwargs...)
-        return_multiple = get(kwargs, :save_everystep, false) || get(kwargs, :saveat, false)
+        return_multiple = get(kwargs, :save_everystep, false) || haskey(kwargs, :saveat)
         p1, re1 = Flux.destructure(model1)
         p2, re2 = Flux.destructure(model2)
         p = vcat(p1, p2)
