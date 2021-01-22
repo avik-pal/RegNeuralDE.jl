@@ -44,7 +44,7 @@ train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> flatten(Float32.
 if REG_TYPE == "error_est"
     # Anneal the regularization so that it doesn't overpower the
     # the main objective
-    λ₀ = 1.0f2
+    λ₀ = 1.0f1
     λ₁ = 1.0f1
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
     solver = SOSRI()
@@ -72,7 +72,7 @@ nsde = ClassifierNSDE(
 )
 ps = Flux.trainable(nsde)
 
-opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
+opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), ADAM(0.01))
 
 function loss_function(
     x,
@@ -200,9 +200,10 @@ for epoch = 1:EPOCHS
 
     # Record the NFE count
     start_time = time()
-    _, nfe, _ = node(dummy_data)
+    _, nfe1, nfe2, _ = nsde(dummy_data)
     inference_runtimes[epoch+1] = time() - start_time
-    nfe_counts[epoch+1] = nfe
+    nfe1_counts[epoch+1] = nfe1
+    nfe2_counts[epoch+1] = nfe2
 
     # Test and Train Accuracy
     train_accuracies[epoch+1] = accuracy(nsde, train_dataloader; no_gpu = true, trajectories = 10)
@@ -226,14 +227,15 @@ logger(true, Dict())
 #--------------------------------------
 ## STORE THE RESULTS
 results = Dict(
-    :nfe_counts => nfe_counts,
+    :nfe1_counts => nfe1_counts,
+    :nfe2_counts => nfe2_counts,
     :train_accuracies => train_accuracies,
     :test_accuracies => test_accuracies,
     :train_runtimes => train_runtimes,
     :inference_runtimes => inference_runtimes,
 )
 
-weights = Flux.params(node) .|> cpu .|> untrack
+weights = Flux.params(nsde) .|> cpu .|> untrack
 BSON.@save MODEL_WEIGHTS weights
 
 YAML.write_file(FILENAME, results)
