@@ -134,7 +134,7 @@ node = TrackedNeuralODE(
     false,
     REGULARIZE,
     solver,
-    saveat = train_dataloader.data[5][1, :, 1] |> cpu |> untrack,
+    saveat = train_dataloader.data[5][1, :, 1] |> f32,
     reltol = 1.4f-8,
     abstol = 1.4f-8,
 )
@@ -272,9 +272,9 @@ logger = table_logger(
 ## TESTING THE MODEL
 # Dummy Input for first run
 d, m, _, _, t, _ = iterate(train_dataloader)[1]
-_t =
-    hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], TrackedArray(CUDA.zeros(1, 1, size(t, 3)))) |>
-    untrack
+d = d |> gpu
+m = m |> gpu
+_t = hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], zeros(1, 1, size(t, 3))) |> gpu
 x_ = vcat(d, m, _t |> track)
 dummy_data = x_
 stime = time()
@@ -314,8 +314,8 @@ for epoch = 1:EPOCHS
     timing = 0
 
     for (i, (d_, m_, _, _, _, _)) in enumerate(train_dataloader)
-        d = d_ |> gpu |> track
-        m = m_ |> gpu |> track
+        local d = d_ |> gpu |> track
+        local m = m_ |> gpu |> track
 
         start_time = time()
         gs = Tracker.gradient(

@@ -23,6 +23,7 @@ BATCH_SIZE = hparams["batch_size"]
 EPOCHS = hparams["epochs"]
 REGULARIZE = hparams["regularize"]
 REG_TYPE = hparams["type"]
+STEER = hparams["steer"]
 identifier =
     REGULARIZE ? "$(string(now()))_$(REGULARIZE)_$(REG_TYPE)" : "$(string(now()))_vanilla"
 EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_node", identifier)
@@ -100,6 +101,8 @@ else
     global agg = mean
     solver = Tsit5()
 end
+b = 0.5f0
+sample_tspan_ubound() = [0.0f0, 1.0f0 - (2 * rand(Float32) - 1.0f0) * b]
 k = log(λ₀ / λ₁) / EPOCHS
 # Exponential Decay
 λ_func(t) = λ₀ * exp(-k * t)
@@ -127,7 +130,8 @@ ps = Flux.trainable(node)
 opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
-    pred, _, sv = model(x, p1, p2, p3; func = save_func)
+    tspan = STEER ? sample_tspan_ubound() : nothing
+    pred, _, sv = model(x, p1, p2, p3; func = save_func, tspan = tspan)
     cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
     reg = REGULARIZE ? λ * agg(sv.saveval) : zero(eltype(pred))
     total_loss = cross_entropy + reg
