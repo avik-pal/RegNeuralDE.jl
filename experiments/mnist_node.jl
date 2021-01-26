@@ -65,16 +65,18 @@ if REG_TYPE == "error_est"
     λ₁ = 1.0f1
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
     solver = Tsit5()
+    global agg = mean
 elseif REG_TYPE == "stiff_est"
     # No annealing is generally needed for stiff_est
-    λ₀ = 1.0f2
-    λ₁ = 1.0f2
+    λ₀ = 0.1f0
+    λ₁ = 0.1f0
     const stability_size =
         Tracker.TrackedReal(1 / Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
     function save_func(u, t, integrator)
-        stiff_est = abs(integrator.eigen_est * integrator.dt)
+        stiff_est = abs(integrator.eigen_est)
         return stability_size * ((iszero(stiff_est) || isnan(stiff_est)) ? 0 : stiff_est)
     end
+    global agg = maximum
     solver = AutoTsit5(Tsit5())
 elseif REG_TYPE == "error_stiff_est"
     λ₀ = 1.0f2
@@ -85,15 +87,17 @@ elseif REG_TYPE == "error_stiff_est"
     function save_func(u, t, integrator)
         err_est = integrator.EEst * integrator.dt
         eest = Tracker.data(err_est)
-        stiff_est = integrator.eigen_est * integrator.dt
+        stiff_est = integrator.eigen_est
         sest = Tracker.data(stiff_est)
         return (
             ((iszero(eest) || isnan(eest)) ? 0 : err_est) +
-            stability_size * ((iszero(sest) || isnan(sest)) ? 0 : stiff_est)
+            0.1f0 * stability_size * ((iszero(sest) || isnan(sest)) ? 0 : stiff_est)
         ) * mul_val
     end
+    global agg = mean
     solver = AutoTsit5(Tsit5())
 else
+    global agg = mean
     solver = Tsit5()
 end
 k = log(λ₀ / λ₁) / EPOCHS
@@ -125,7 +129,7 @@ opt = Flux.Optimise.Optimiser(InvDecay(1.0e-5), Momentum(0.1, 0.9))
 function loss_function(x, y, model, p1, p2, p3; λ = 1.0f2, notrack = false)
     pred, _, sv = model(x, p1, p2, p3; func = save_func)
     cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
-    reg = REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
+    reg = REGULARIZE ? λ * agg(sv.saveval) : zero(eltype(pred))
     total_loss = cross_entropy + reg
     if !notrack
         ce_un = cross_entropy |> untrack

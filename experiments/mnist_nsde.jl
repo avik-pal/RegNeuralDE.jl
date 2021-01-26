@@ -27,7 +27,7 @@ REGULARIZE = hparams["regularize"]
 REG_TYPE = hparams["type"]
 identifier =
     REGULARIZE ? "$(string(now()))_$(REGULARIZE)_$(REG_TYPE)" : "$(string(now()))_vanilla"
-EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_node", identifier)
+EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_nsde", identifier)
 MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 

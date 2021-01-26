@@ -31,10 +31,10 @@ struct TrackedNeuralODE{R,Z,M,P,RE,T,A,K} <: DiffEqFlux.NeuralDELayer
     end
 end
 
-@fastmath function (n::TrackedNeuralODE{false,false})(x, p = n.p; func = (u, t, int) -> 0)
+@fastmath function (n::TrackedNeuralODE{false,false})(x, p = n.p; func = (u, t, int) -> 0, tspan = nothing)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
-    tspan = _convert_tspan(n.tspan, p)
+    tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
 
     ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
@@ -52,10 +52,10 @@ end
     return res, nfe, nothing
 end
 
-@fastmath function (n::TrackedNeuralODE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
+@fastmath function (n::TrackedNeuralODE{false,true})(x, p = n.p; func = (u, t, int) -> 0, tspan = nothing)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
-    tspan = _convert_tspan(n.tspan, p)
+    tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
 
     ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
@@ -80,10 +80,11 @@ end
     # strategy is using Stiffness Estimate:
     # (u, t, integrator) -> integrator.eigen_est * integrator.dt
     func = (u, t, integrator) -> integrator.EEst * integrator.dt,
+    tspan = nothing,
 )
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
-    tspan = _convert_tspan(n.tspan, p)
+    tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
 
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback(func, sv)
@@ -110,10 +111,11 @@ end
     # strategy is using Stiffness Estimate:
     # (u, t, integrator) -> integrator.eigen_est * integrator.dt
     func = (u, t, integrator) -> integrator.EEst * integrator.dt,
+    tspan = nothing,
 )
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
-    tspan = _convert_tspan(n.tspan, p)
+    tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
 
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback(func, sv)
@@ -133,11 +135,11 @@ end
     return res, nfe, sv
 end
 
-function solution(n::TrackedNeuralODE, x, p = n.p; solver = nothing)
+function solution(n::TrackedNeuralODE, x, p = n.p; solver = nothing, tspan = nothing)
     solver = isnothing(solver_override) ? n.args[1] : solver
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
-    tspan = _convert_tspan(n.tspan, p)
+    tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
 
     ff = ODEFunction{false}(dudt_, tgrad = n.time_dep ? nothing : DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
