@@ -21,9 +21,10 @@ BATCH_SIZE = hparams["batch_size"]
 EPOCHS = hparams["epochs"]
 REGULARIZE = hparams["regularize"]
 REG_TYPE = hparams["type"]
+STEER = hparams["steer"]
 identifier =
-    REGULARIZE ? "$(string(now()))_$(REGULARIZE)_$(REG_TYPE)" : "$(string(now()))_Vanilla"
-EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "mnist_node", identifier)
+    REGULARIZE ? "$(string(now()))_$(REGULARIZE)_$(REG_TYPE)" : "$(string(now()))_vanilla"
+EXPERIMENT_LOGDIR = joinpath(pwd(), "results", "latent_ode", identifier)
 MODEL_WEIGHTS = joinpath(EXPERIMENT_LOGDIR, "weights.bson")
 FILENAME = joinpath(EXPERIMENT_LOGDIR, "results.yml")
 
@@ -143,19 +144,25 @@ gen_to_data = Dense(20, 37) |> track |> gpu
 model = LatentTimeSeriesModel(gru_rnn, rec_to_gen, node, gen_to_data)
 ps = Flux.trainable(model)
 
+agg = mean
 if REG_TYPE == "error_est"
     # Anneal the regularization so that it doesn't overpower the
     # the main objective
     λᵣ₀ = 1.0f3
     λᵣ₁ = 1.0f2
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
-    get_savevals(x) = x
+    global agg = mean
 else
     # No annealing is generally needed for stiff_est
-    λᵣ₀ = 1.0f3
-    λᵣ₁ = 1.0f3
-    save_func(u, t, integrator) = abs(integrator.eigen_est * integrator.dt)
-    get_savevals(x) = filter(!iszero, x)
+    λᵣ₀ = 1.0f1
+    λᵣ₁ = 1.0f1
+    const stability_size =
+        Tracker.TrackedReal(1 / Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
+    function save_func(u, t, integrator)
+        stiff_est = abs(integrator.eigen_est)
+        return stability_size * ((iszero(stiff_est) || isnan(stiff_est)) ? 0 : stiff_est)
+    end
+    global agg = maximum
 end
 kᵣ = log(λᵣ₀ / λᵣ₁) / EPOCHS
 # Exponential Decay
@@ -200,7 +207,7 @@ function loss_function(
 
     _log_likelihood = log_likelihood(∇pred, mask)
     _kl_div = λₖ .* kl_divergence(μ₀, logσ²)
-    reg = REGULARIZE ? λᵣ * mean(get_savevals(sv.saveval)) : zero(eltype(pred_))
+    reg = REGULARIZE ? λᵣ * agg(sv.saveval) : zero(eltype(pred_))
     total_loss = -mean(_log_likelihood .- _kl_div) + reg
 
     if !notrack
