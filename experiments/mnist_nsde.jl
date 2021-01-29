@@ -160,15 +160,8 @@ logger(
 y_ = zeros(Float32, 10, 1)
 y_[1, :] .= 1.0
 _ = Tracker.gradient(
-    (p1, p2, p3) -> loss_function(
-        rand(Float32, 784, 1),
-        y_,
-        nsde,
-        p1,
-        p2,
-        p3;
-        notrack = true,
-    ),
+    (p1, p2, p3) ->
+        loss_function(rand(Float32, 784, 1), y_, nsde, p1, p2, p3; notrack = true),
     ps...,
 )
 #--------------------------------------
@@ -206,8 +199,10 @@ for epoch = 1:EPOCHS
     nfe2_counts[epoch+1] = nfe2
 
     # Test and Train Accuracy
-    train_accuracies[epoch+1] = accuracy(nsde, train_dataloader; no_gpu = true, trajectories = 10)
-    test_accuracies[epoch+1] = accuracy(nsde, test_dataloader; no_gpu = true, trajectories = 10)
+    train_accuracies[epoch+1] =
+        accuracy(nsde, train_dataloader; no_gpu = true, trajectories = 10)
+    test_accuracies[epoch+1] =
+        accuracy(nsde, test_dataloader; no_gpu = true, trajectories = 10)
 
     logger(
         false,

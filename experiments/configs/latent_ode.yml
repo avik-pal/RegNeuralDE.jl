@@ -2,7 +2,7 @@ name: Physionet Latent ODE
 seed: 1999
 hyperparameters:
     batch_size: 512
-    regularize: true
-    type: stiff_est  # Possible Choices: error_est / stiff_est / error_stiff_est
-    steer: false
+    regularize: false
+    type: error_est  # Possible Choices: error_est / stiff_est / error_stiff_est
+    steer: true
     epochs: 300

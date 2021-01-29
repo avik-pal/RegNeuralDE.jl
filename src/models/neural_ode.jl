@@ -10,6 +10,7 @@ struct TrackedNeuralODE{R,Z,M,P,RE,T,A,K} <: DiffEqFlux.NeuralDELayer
     function TrackedNeuralODE(model, tspan, time_dep, regularize, args...; kwargs...)
         return_multiple = get(kwargs, :save_everystep, false) || haskey(kwargs, :saveat)
         p, re = Flux.destructure(model)
+        kwargs = Dict(kwargs)
         new{
             regularize,
             return_multiple,
@@ -31,10 +32,31 @@ struct TrackedNeuralODE{R,Z,M,P,RE,T,A,K} <: DiffEqFlux.NeuralDELayer
     end
 end
 
-@fastmath function (n::TrackedNeuralODE{false,false})(x, p = n.p; func = (u, t, int) -> 0, tspan = nothing)
+function update_saveat!(kwargs, saveat)
+    if isnothing(saveat)
+        return kwargs, () -> nothing
+    end
+    original_saveat = get(kwargs, :saveat, nothing)
+    function restore!()
+        kwargs[:saveat] = original_saveat
+        return kwargs
+    end
+    kwargs[:saveat] = saveat
+    return kwargs, restore!
+end
+
+@fastmath function (n::TrackedNeuralODE{false,false})(
+    x,
+    p = n.p;
+    func = (u, t, int) -> 0,
+    tspan = nothing,
+    saveat = nothing,
+)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
+
+    kwargs, restore_kwargs! = update_saveat!(n.kwargs, saveat)
 
     ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
@@ -44,18 +66,28 @@ end
         n.args...;
         sensealg = SensitivityADPassThrough(),
         callback = nothing,
-        n.kwargs...,
+        kwargs...,
     )
     res = diffeqsol_to_trackedarray(sol)::typeof(x)
     nfe = sol.destats.nf::Int
 
+    restore_kwargs!()
+
     return res, nfe, nothing
 end
 
-@fastmath function (n::TrackedNeuralODE{false,true})(x, p = n.p; func = (u, t, int) -> 0, tspan = nothing)
+@fastmath function (n::TrackedNeuralODE{false,true})(
+    x,
+    p = n.p;
+    func = (u, t, int) -> 0,
+    tspan = nothing,
+    saveat = nothing,
+)
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
+
+    kwargs, restore_kwargs! = update_saveat!(n.kwargs, saveat)
 
     ff = ODEFunction{false}(dudt_, tgrad = DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
@@ -65,10 +97,12 @@ end
         n.args...;
         sensealg = SensitivityADPassThrough(),
         callback = nothing,
-        n.kwargs...,
+        kwargs...,
     )
     res = diffeqsol_to_3dtrackedarray(sol)::TrackedArray{Float32,3,CuArray{Float32,3}}
     nfe = sol.destats.nf::Int
+
+    restore_kwargs!()
 
     return res, nfe, nothing
 end
@@ -81,10 +115,13 @@ end
     # (u, t, integrator) -> integrator.eigen_est * integrator.dt
     func = (u, t, integrator) -> integrator.EEst * integrator.dt,
     tspan = nothing,
+    saveat = nothing,
 )
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
+
+    kwargs, restore_kwargs! = update_saveat!(n.kwargs, saveat)
 
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback(func, sv)
@@ -96,9 +133,11 @@ end
         n.args...;
         sensealg = SensitivityADPassThrough(),
         callback = svcb,
-        n.kwargs...,
+        kwargs...,
     )
     res = diffeqsol_to_trackedarray(sol)::typeof(x)
+
+    restore_kwargs!()
 
     nfe = sol.destats.nf::Int
     return res, nfe, sv
@@ -112,10 +151,13 @@ end
     # (u, t, integrator) -> integrator.eigen_est * integrator.dt
     func = (u, t, integrator) -> integrator.EEst * integrator.dt,
     tspan = nothing,
+    saveat = nothing,
 )
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
+
+    kwargs, restore_kwargs! = update_saveat!(n.kwargs, saveat)
 
     sv = SavedValues(eltype(tspan), eltype(p))
     svcb = SavingCallback(func, sv)
@@ -127,19 +169,30 @@ end
         n.args...;
         sensealg = SensitivityADPassThrough(),
         callback = svcb,
-        n.kwargs...,
+        kwargs...,
     )
     res = diffeqsol_to_3dtrackedarray(sol)::TrackedArray{Float32,3,CuArray{Float32,3}}
+
+    restore_kwargs!()
 
     nfe = sol.destats.nf::Int
     return res, nfe, sv
 end
 
-function solution(n::TrackedNeuralODE, x, p = n.p; solver = nothing, tspan = nothing)
+function solution(
+    n::TrackedNeuralODE,
+    x,
+    p = n.p;
+    solver = nothing,
+    tspan = nothing,
+    saveat = nothing,
+)
     solver = isnothing(solver_override) ? n.args[1] : solver
     dudt_(u, p, t) = n.time_dep ? n.re(p)(u, t) : n.re(p)(u)
 
     tspan = _convert_tspan(isnothing(tspan) ? n.tspan : tspan, p)
+
+    kwargs, restore_kwargs! = update_saveat!(n.kwargs, saveat)
 
     ff = ODEFunction{false}(dudt_, tgrad = n.time_dep ? nothing : DiffEqFlux.basic_tgrad)
     prob = ODEProblem{false}(ff, x, tspan, p)
@@ -149,8 +202,10 @@ function solution(n::TrackedNeuralODE, x, p = n.p; solver = nothing, tspan = not
         solver;
         sensealg = SensitivityADPassThrough(),
         callback = nothing,
-        n.kwargs...,
+        kwargs...,
     )
+
+    restore_kwargs!()
 
     return sol
 end

@@ -20,12 +20,16 @@ ttime1, ttime2 = [], []
 loss1, loss2 = [], []
 nfe1, nfe2 = [], []
 
-function loss_function(u0, p, i)
+neuralsde = nothing
+REGULARIZE = false
+
+function loss_function(u0, p, i, c = 0.2f0)
     sol, nfe1, nfe2, sv = neuralsde(u0, p)
-    means, vars = mean(sol; dims = 3), var(sol; dims = 3)
+    means = mean(sol; dims = 3)
+    vars = var(sol; dims = 3, mean = means)
     l2_means = mean(abs2, sde_data .- means)
     l2_vars = mean(abs2, sde_data_vars .- vars)
-    reg = REGULARIZE ? 0.2f0 * sum(sv.saveval) : 0.0f0
+    reg = REGULARIZE ? c * sum(sv.saveval) : 0.0f0
     loss = l2_means + l2_vars
     if i % 50 == 0
         @show i, data(loss), data(l2_means), data(l2_vars), data(reg), nfe1, nfe2
@@ -34,8 +38,8 @@ function loss_function(u0, p, i)
     return loss + reg
 end
 
-for i in 1:3
-    for reg in [true, false]
+for i in [5]#, 35, 1]
+    for reg in [false, true]
         Random.seed!(i)
 
         drift_dudt = Chain(x -> x .^ 3, Dense(2, 50, tanh), Dense(50, 2)) |> track
@@ -46,7 +50,7 @@ for i in 1:3
         neuralsde = TrackedNeuralDSDE(
             drift_dudt,
             diffusion_dudt,
-            [0.0f0, 1.2f0],
+            [0.0f0, 1.0f0 + eps(Float32)],
             REGULARIZE,
             SOSRI(),
             saveat = tsteps,
@@ -54,34 +58,29 @@ for i in 1:3
             abstol = 3f-1,
         )
 
-        u0_ = repeat(u0, 1, 10)
+        u0_ = repeat(u0, 1, 100)
         loss_function(u0_ |> track, neuralsde.p, 0)
         Tracker.gradient(p -> loss_function(u0_ |> track, p, 0), neuralsde.p)
 
-        opt = AdaBelief(0.025)
+        opt = AdaBelief(0.01)
         ps = neuralsde.p
-        _t = time()
-        for iter in 1:100
-            gs = Tracker.gradient(p -> loss_function(u0_ |> track, p, iter), ps)[1]
+        ps_best = ps
+        total_time = 0
+        for iter = 1:250
+            _t = time()
+            l, back = Tracker.forward(p -> loss_function(u0_ |> track, p, iter), ps)
+            gs = back(1.0f0)[1]
+            total_time += time() - _t
+            ps_best = ps
             update_parameters!((ps,), (gs,), opt)
         end
-        total_time = time() - _t
 
         u0_ = repeat(u0, 1, 100)
-        ps = neuralsde.p
-        _t = time()
-        for iter in 1:150
-            gs = Tracker.gradient(p -> loss_function(u0_ |> track, p, iter), ps)[1]
-            update_parameters!((ps,), (gs,), opt)
-        end
-        total_time += time() - _t
-        u0_ = u0_ |> track
-        ptime = @belapsed neuralsde(u0_, ps)[1]
 
         begin
-            u0_ = repeat(u0, 1, 256) |> track
-            ptime = @belapsed neuralsde(u0_, ps)[1]
-            preds = @btime neuralsde(u0_, ps)[1]
+            neuralsde(u0_ |> track, ps_best)
+            ptime = @belapsed neuralsde($u0_ |> track, $ps_best)[1]
+            preds = neuralsde(u0_ |> track, ps_best)[1]
             preds = preds |> untrack
             means, vars = mean(preds; dims = 3), var(preds, dims = 3)
 
@@ -93,7 +92,7 @@ for i in 1:3
                 fillalpha = 0.2,
                 label = "Pred: Dim 1",
                 linewidth = 3,
-                legend = :bottomleft
+                legend = :bottomleft,
             )
             plot!(
                 plt,
@@ -103,7 +102,7 @@ for i in 1:3
                 color = colors[2],
                 fillalpha = 0.2,
                 label = "Pred: Dim 2",
-                linewidth = 3
+                linewidth = 3,
             )
             scatter!(
                 plt,
@@ -121,7 +120,7 @@ for i in 1:3
                 yerror = sde_data_vars[2, :],
                 label = "Data: Dim 2",
                 color = colors[2],
-                msc = colors[2]
+                msc = colors[2],
             )
 
             if REGULARIZE
@@ -129,33 +128,41 @@ for i in 1:3
             else
                 push!(plots2, plt)
             end
+            display(plt)
         end
 
         if REGULARIZE
             push!(ttime1, total_time)
-            l, n = loss_function(u0_ |> track, neuralsde.p, -1)
+            l, n = loss_function(u0_ |> track, ps_best, -1)
             push!(loss1, l)
             push!(ptime1, ptime)
             push!(nfe1, n)
+
+            @show ttime1[end], l, n, ptime[end]
         else
             push!(ttime2, total_time)
-            l, n = loss_function(u0_ |> track, neuralsde.p, -1)
+            l, n = loss_function(u0_ |> track, ps_best, -1)
             push!(loss2, l)
             push!(ptime2, ptime)
             push!(nfe2, n)
+
+            @show ttime2[end], l, n, ptime2[end]
         end
+
+        GC.gc(true)
+        GC.gc(true)
+        GC.gc(true)
     end
 end
 
-mean(loss1), std(loss1), mean(loss2), std(loss2)
-mean(nfe1), std(nfe1), mean(nfe2), std(nfe2)
-mean(ptime1), std(ptime1), mean(ptime2), std(ptime2)
-mean(ttime1), std(ttime1), mean(ttime2), std(ttime2)
+@show mean(loss1), std(loss1), mean(loss2), std(loss2)
+@show mean(nfe1), std(nfe1), mean(nfe2), std(nfe2)
+@show mean(ptime1), std(ptime1), mean(ptime2), std(ptime2)
+@show mean(ttime1), std(ttime1), mean(ttime2), std(ttime2)
 
-
-title!(plots2[3], "Unregularized Neural SDE")
+title!(plots2[1], "Unregularized Neural SDE")
 title!(plots1[1], "Regularized Neural SDE")
 xlabel!(plots1[1], "t")
-plt = plot(plots2[3], plots1[1], layout = (2, 1))
+plt = plot(plots2[1], plots1[1], layout = (2, 1))
 
 savefig(plt, "spiral_sde.pdf")

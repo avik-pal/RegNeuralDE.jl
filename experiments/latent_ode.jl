@@ -129,13 +129,14 @@ gen_dynamics =
 # stiff solver. This "hack" allows us to construct a CompositeAlgorithm and
 # allows us to get the stiffness estimate from the solver itself.
 solver = REGULARIZE ? (REG_TYPE == "stiff_est" ? AutoTsit5(Tsit5()) : Tsit5()) : Tsit5()
+saveat = train_dataloader.data[5][1, :, 1] |> f32
 node = TrackedNeuralODE(
     gen_dynamics,
     [0.0f0, 1.0f0],
     false,
     REGULARIZE,
     solver,
-    saveat = train_dataloader.data[5][1, :, 1] |> f32,
+    saveat = saveat,
     reltol = 1.4f-8,
     abstol = 1.4f-8,
 )
@@ -170,6 +171,20 @@ kᵣ = log(λᵣ₀ / λᵣ₁) / EPOCHS
 
 λₖ_func(t) = max(0, 1 - 0.99f0^(t - 10))
 
+## Steer Regularization
+sample_tbounds(t, δt) = clamp!(
+    vcat(t[1:1, :], t[2:end, :] .+ (2 .* rand(eltype(δt), size(δt)) .- 1) .* δt ./ 2),
+    0.0f0,
+    1.0f0,
+)
+
+function sample_tbounds(t)
+    δt = t[2:end, :] .- t[1:end-1, :] .+ eps(Float32)
+    return sample_tbounds(t, δt), δt
+end
+
+_, δsaveat = sample_tbounds(saveat)
+
 ## Loss Functions
 function log_likelihood(∇pred, mask)
     function _sum_stable_infer(x)::typeof(x)
@@ -197,9 +212,11 @@ function loss_function(
     λᵣ = 1.0f2,
     λₖ = 1.0f0,
     notrack = false,
+    saveat = nothing,
 )
     x_ = vcat(data, mask, _t)
-    result, μ₀, logσ², nfe, sv = model(x_, p1, p2, p3, p4; func = save_func)
+    result, μ₀, logσ², nfe, sv =
+        model(x_, p1, p2, p3, p4; func = save_func, saveat = saveat)
 
     data_ = data .* mask
     pred_ = result .* mask
@@ -226,6 +243,7 @@ function loss_function(
         )
     end
 
+    @show total_loss
     return total_loss
 end
 
@@ -281,11 +299,22 @@ logger = table_logger(
 d, m, _, _, t, _ = iterate(train_dataloader)[1]
 d = d |> gpu
 m = m |> gpu
-_t = hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], zeros(1, 1, size(t, 3))) |> gpu
+function get_t_saveat()
+    if !STEER
+        t = t |> f32
+        tt = saveat
+    else
+        tt = sample_tbounds(saveat, δsaveat)
+        t = repeat(reshape(tt, 1, :, 1), 1, 1, BATCH_SIZE)
+    end
+    _t = hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], zeros(1, 1, size(t, 3))) |> gpu
+    return t, tt, _t
+end
+t, tt, _t = get_t_saveat()
 x_ = vcat(d, m, _t |> track)
 dummy_data = x_
 stime = time()
-result, μ₀, logσ², _nfe, sv = model(x_)
+result, μ₀, logσ², _nfe, sv = model(x_; saveat = t)
 inference_runtimes[1] = time() - stime
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
@@ -303,11 +332,12 @@ logger(
     inference_runtimes[1],
 )
 
-loss_function(d, m, _t |> track, model, ps...; notrack = true)
+t, tt, _t = get_t_saveat()
+loss_function(d, m, _t |> track, model, ps...; notrack = true, saveat = t)
 
 Tracker.gradient(
     (p1, p2, p3, p4) ->
-        loss_function(d, m, _t |> track, model, p1, p2, p3, p4; notrack = true),
+        loss_function(d, m, _t |> track, model, p1, p2, p3, p4; notrack = true, saveat = t),
     ps...,
 )
 #--------------------------------------
@@ -323,6 +353,8 @@ for epoch = 1:EPOCHS
     for (i, (d_, m_, _, _, _, _)) in enumerate(train_dataloader)
         local d = d_ |> gpu |> track
         local m = m_ |> gpu |> track
+        # If STEER is true then we get stochastic saveat positions
+        local t, tt, _t = get_t_saveat()
 
         start_time = time()
         gs = Tracker.gradient(
@@ -338,6 +370,7 @@ for epoch = 1:EPOCHS
                 λᵣ = λᵣ,
                 λₖ = λₖ,
                 notrack = false,
+                saveat = t
             ),
             ps...,
         )
