@@ -80,7 +80,7 @@ elseif REG_TYPE == "stiff_est"
     global agg = maximum
     solver = AutoTsit5(Tsit5())
 elseif REG_TYPE == "error_stiff_est"
-    λ₀ = 1.0f2
+    λ₀ = 1.0f1
     λ₁ = 1.0f1
     const mul_val = Tracker.TrackedReal(1.0f0)
     const stability_size =

@@ -128,7 +128,12 @@ gen_dynamics =
 # AutoTsit5(Tsit5()) is simply Tsit5() since we don't want to switch to a
 # stiff solver. This "hack" allows us to construct a CompositeAlgorithm and
 # allows us to get the stiffness estimate from the solver itself.
-solver = REGULARIZE ? (REG_TYPE == "stiff_est" ? AutoTsit5(Tsit5()) : Tsit5()) : Tsit5()
+solver =
+    REGULARIZE ?
+    (
+        REG_TYPE == "stiff_est" || REG_TYPE == "error_stiff_est" ? AutoTsit5(Tsit5()) :
+        Tsit5()
+    ) : Tsit5()
 saveat = train_dataloader.data[5][1, :, 1] |> f32
 node = TrackedNeuralODE(
     gen_dynamics,
@@ -153,7 +158,7 @@ if REG_TYPE == "error_est"
     λᵣ₁ = 1.0f2
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
     global agg = mean
-else
+elseif REG_TYPE == "stiff_est"
     # No annealing is generally needed for stiff_est
     λᵣ₀ = 1.0f1
     λᵣ₁ = 1.0f1
@@ -164,6 +169,23 @@ else
         return stability_size * ((iszero(stiff_est) || isnan(stiff_est)) ? 0 : stiff_est)
     end
     global agg = maximum
+elseif REG_TYPE == "error_stiff_est"
+    λ₀ = 1.0f1
+    λ₁ = 1.0f1
+    const mul_val = Tracker.TrackedReal(1.0f0)
+    const stability_size =
+        Tracker.TrackedReal(1 / Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
+    function save_func(u, t, integrator)
+        err_est = integrator.EEst * integrator.dt
+        eest = Tracker.data(err_est)
+        stiff_est = integrator.eigen_est
+        sest = Tracker.data(stiff_est)
+        return (
+            ((iszero(eest) || isnan(eest)) ? 0 : err_est) +
+            0.1f0 * stability_size * ((iszero(sest) || isnan(sest)) ? 0 : stiff_est)
+        ) * mul_val
+    end
+    global agg = mean
 end
 kᵣ = log(λᵣ₀ / λᵣ₁) / EPOCHS
 # Exponential Decay
@@ -243,7 +265,6 @@ function loss_function(
         )
     end
 
-    @show total_loss
     return total_loss
 end
 
@@ -314,7 +335,7 @@ t, tt, _t = get_t_saveat()
 x_ = vcat(d, m, _t |> track)
 dummy_data = x_
 stime = time()
-result, μ₀, logσ², _nfe, sv = model(x_; saveat = t)
+result, μ₀, logσ², _nfe, sv = model(x_; saveat = tt)
 inference_runtimes[1] = time() - stime
 train_runtimes[1] = 0.0
 nfe_counts[1] = _nfe
@@ -333,11 +354,21 @@ logger(
 )
 
 t, tt, _t = get_t_saveat()
-loss_function(d, m, _t |> track, model, ps...; notrack = true, saveat = t)
+loss_function(d, m, _t |> track, model, ps...; notrack = true, saveat = tt)
 
 Tracker.gradient(
-    (p1, p2, p3, p4) ->
-        loss_function(d, m, _t |> track, model, p1, p2, p3, p4; notrack = true, saveat = t),
+    (p1, p2, p3, p4) -> loss_function(
+        d,
+        m,
+        _t |> track,
+        model,
+        p1,
+        p2,
+        p3,
+        p4;
+        notrack = true,
+        saveat = tt,
+    ),
     ps...,
 )
 #--------------------------------------
@@ -370,7 +401,7 @@ for epoch = 1:EPOCHS
                 λᵣ = λᵣ,
                 λₖ = λₖ,
                 notrack = false,
-                saveat = t
+                saveat = tt,
             ),
             ps...,
         )
