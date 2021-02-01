@@ -170,8 +170,8 @@ elseif REG_TYPE == "stiff_est"
     end
     global agg = maximum
 elseif REG_TYPE == "error_stiff_est"
-    λ₀ = 1.0f1
-    λ₁ = 1.0f1
+    λᵣ₀ = 1.0f1
+    λᵣ₁ = 1.0f1
     const mul_val = Tracker.TrackedReal(1.0f0)
     const stability_size =
         Tracker.TrackedReal(1 / Float32(OrdinaryDiffEq.alg_stability_size(Tsit5())))
