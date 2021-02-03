@@ -52,12 +52,12 @@ elseif REG_TYPE == "stiff_est"
     λ₀ = 0.1f0
     λ₁ = 0.1f0
     const stability_size =
-        Tracker.TrackedReal(1 / Float32(StochasticDiffEq.alg_stability_size(SOSRI())))
+        Tracker.TrackedReal(1 / Float32(StochasticDiffEq.alg_stability_size(SOSRI2())))
     function save_func(u, t, integrator)
         stiff_est = abs(integrator.eigen_est)
         return stability_size * ((iszero(stiff_est) || isnan(stiff_est)) ? 0 : stiff_est)
     end
-    global agg = maximum
+    global agg = mean
     solver = AutoSOSRI2(SOSRI2())
 else
     global agg = mean
