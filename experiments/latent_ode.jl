@@ -317,10 +317,10 @@ logger = table_logger(
 #--------------------------------------
 ## TESTING THE MODEL
 # Dummy Input for first run
-d, m, _, _, t, _ = iterate(train_dataloader)[1]
+d, m, _, _, t_d, _ = iterate(train_dataloader)[1]
 d = d |> gpu
 m = m |> gpu
-function get_t_saveat()
+function get_t_saveat(t = nothing)
     if !STEER
         t = t |> f32
         tt = saveat
@@ -331,7 +331,7 @@ function get_t_saveat()
     _t = hcat(t[:, 2:end, :] .- t[:, 1:end-1, :], zeros(1, 1, size(t, 3))) |> gpu
     return t, tt, _t
 end
-t, tt, _t = get_t_saveat()
+t, tt, _t = get_t_saveat(t_d)
 x_ = vcat(d, m, _t |> track)
 dummy_data = x_
 stime = time()
@@ -353,7 +353,7 @@ logger(
     inference_runtimes[1],
 )
 
-t, tt, _t = get_t_saveat()
+t, tt, _t = get_t_saveat(t_d)
 loss_function(d, m, _t |> track, model, ps...; notrack = true, saveat = tt)
 
 Tracker.gradient(
@@ -381,11 +381,11 @@ for epoch = 1:EPOCHS
 
     timing = 0
 
-    for (i, (d_, m_, _, _, _, _)) in enumerate(train_dataloader)
+    for (i, (d_, m_, _, _, t_d, _)) in enumerate(train_dataloader)
         local d = d_ |> gpu |> track
         local m = m_ |> gpu |> track
         # If STEER is true then we get stochastic saveat positions
-        local t, tt, _t = get_t_saveat()
+        local t, tt, _t = get_t_saveat(t_d)
 
         start_time = time()
         gs = Tracker.gradient(

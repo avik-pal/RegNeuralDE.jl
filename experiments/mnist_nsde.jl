@@ -41,14 +41,26 @@ cp(config_file, joinpath(EXPERIMENT_LOGDIR, "config.yml"))
 # Get the dataset
 train_dataloader, test_dataloader = load_mnist(BATCH_SIZE, x -> flatten(Float32.(x)))
 
+agg = mean
 if REG_TYPE == "error_est"
-    # Anneal the regularization so that it doesn't overpower the
-    # the main objective
     λ₀ = 1.0f1
     λ₁ = 1.0f1
     save_func(u, t, integrator) = integrator.EEst * integrator.dt
     solver = SOSRI()
+    global agg = mean
+elseif REG_TYPE == "stiff_est"
+    λ₀ = 0.1f0
+    λ₁ = 0.1f0
+    const stability_size =
+        Tracker.TrackedReal(1 / Float32(StochasticDiffEq.alg_stability_size(SOSRI())))
+    function save_func(u, t, integrator)
+        stiff_est = abs(integrator.eigen_est)
+        return stability_size * ((iszero(stiff_est) || isnan(stiff_est)) ? 0 : stiff_est)
+    end
+    global agg = maximum
+    solver = AutoSOSRI2(SOSRI2())
 else
+    global agg = mean
     solver = SOSRI()
 end
 k = log(λ₀ / λ₁) / EPOCHS
@@ -87,7 +99,7 @@ function loss_function(
 )
     pred, _, _, sv = model(x, p1, p2, p3; trajectories = trajectories, func = save_func)
     cross_entropy = Flux.Losses.logitcrossentropy(pred, y)
-    reg = REGULARIZE ? λ * mean(sv.saveval) : zero(eltype(pred))
+    reg = REGULARIZE ? λ * agg(sv.saveval) : zero(eltype(pred))
     total_loss = cross_entropy + reg
     if !notrack
         ce_un = cross_entropy |> untrack

@@ -41,7 +41,7 @@ struct TrackedNeuralDSDE{R,Z,M1,M2,P,RE1,RE2,T,A,K} <: DiffEqFlux.NeuralDELayer
     end
 end
 
-function (n::TrackedNeuralDSDE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
+@fastmath function (n::TrackedNeuralDSDE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
     function dudt_(u, p, t)
         n.nfes[1] += 1
         n.re1(p[1:n.len])(u)
@@ -61,7 +61,7 @@ function (n::TrackedNeuralDSDE{false,true})(x, p = n.p; func = (u, t, int) -> 0)
     return arr, nfe1, nfe2, nothing
 end
 
-function (n::TrackedNeuralDSDE{false,false})(x, p = n.p; func = (u, t, int) -> 0)
+@fastmath function (n::TrackedNeuralDSDE{false,false})(x, p = n.p; func = (u, t, int) -> 0)
     function dudt_(u, p, t)
         n.nfes[1] += 1
         n.re1(p[1:n.len])(u)
@@ -81,7 +81,7 @@ function (n::TrackedNeuralDSDE{false,false})(x, p = n.p; func = (u, t, int) -> 0
     return arr, nfe1, nfe2, nothing
 end
 
-function (n::TrackedNeuralDSDE{true,true})(
+@fastmath function (n::TrackedNeuralDSDE{true,true})(
     x,
     p = n.p;
     func = (u, t, integrator) -> integrator.EEst * integrator.dt,
@@ -113,7 +113,7 @@ function (n::TrackedNeuralDSDE{true,true})(
     return arr, nfe1, nfe2, sv
 end
 
-function (n::TrackedNeuralDSDE{true,false})(
+@fastmath function (n::TrackedNeuralDSDE{true,false})(
     x,
     p = n.p;
     func = (u, t, integrator) -> integrator.EEst * integrator.dt,
