@@ -1,6 +1,6 @@
 # RegNeuralDE
 
-Official implemention of the *ICML 2021* Paper **Opening the Blackbox: Accelerating Neural Differential Equations by Regularizing Internal Solver Heuristics**
+Official Implementation of the *ICML 2021* Paper **Opening the Blackbox: Accelerating Neural Differential Equations by Regularizing Internal Solver Heuristics**
 
 ## USAGE
 
