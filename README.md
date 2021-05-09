@@ -27,6 +27,10 @@ If you found this codebase useful in your research, please consider citing
 }
 ```
 
+## DATASETS
+
+* Preprocessed Physionet Data can be downloaded from [here](https://github.com/avik-pal/RegNeuralDE.jl/releases/download/v0.1.0/physionet.zip). Place the downloaded file in `data/physionet.bson`.
+
 ## EXPERIMENTS
 
 Important Parameters of the Experiments are controlled using the `yml` files in `experiments/configs`.
