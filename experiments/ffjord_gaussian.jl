@@ -1,9 +1,9 @@
 #--------------------------------------
 ## LOAD PACKAGES
-using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, Random, Statistics
+using RegNeuralDE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker, Random, Statistics
 using YAML, Dates, BSON, NNlib
 using CUDA
-using RegNeuralODE: loglikelihood
+using RegNeuralDE: loglikelihood
 using Flux.Optimise: update!
 using Flux: @functor
 using Tracker: TrackedReal, data

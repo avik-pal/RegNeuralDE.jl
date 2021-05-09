@@ -1,6 +1,6 @@
 #--------------------------------------
 ## LOAD PACKAGES
-using RegNeuralODE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker
+using RegNeuralDE, OrdinaryDiffEq, Flux, DiffEqFlux, Tracker
 using YAML, Dates, BSON, Random, Statistics, Printf
 using CUDA
 using Flux: @functor

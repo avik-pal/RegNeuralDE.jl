@@ -1,4 +1,4 @@
-module RegNeuralODE
+module RegNeuralDE
 
 # StdLib
 using Statistics, LinearAlgebra

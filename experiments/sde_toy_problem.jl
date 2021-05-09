@@ -1,5 +1,5 @@
 using Plots, Statistics, Random
-using Flux, DiffEqFlux, StochasticDiffEq, CUDA, RegNeuralODE, Tracker
+using Flux, DiffEqFlux, StochasticDiffEq, CUDA, RegNeuralDE, Tracker
 using BSON
 using Tracker: data
 using ColorBrewer

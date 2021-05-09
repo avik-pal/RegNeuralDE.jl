@@ -1,7 +1,6 @@
 .ipynb_checkpoints
 notebooks/
 results/
-data/
 benchmarks/
 .vscode/
 extras/

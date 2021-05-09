@@ -1,4 +1,4 @@
-name = "RegNeuralODE"
+name = "RegNeuralDE"
 uuid = "609fb2e8-5edb-4085-901c-b8bcb729cc96"
 authors = ["Avik Pal <avikpal@iitk.ac.in> and contributors"]
 version = "0.1.0"
