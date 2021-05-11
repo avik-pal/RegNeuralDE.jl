@@ -1,6 +1,6 @@
 # RegNeuralDE
 
-Official Implementation of the *ICML 2021* Paper **Opening the Blackbox: Accelerating Neural Differential Equations by Regularizing Internal Solver Heuristics**
+Official Implementation of the *ICML 2021* Paper [**Opening the Blackbox: Accelerating Neural Differential Equations by Regularizing Internal Solver Heuristics**](https://arxiv.org/abs/2105.03918)
 
 ## USAGE
 
@@ -24,6 +24,9 @@ If you found this codebase useful in your research, please consider citing
     author={Avik Pal and Yingbo Ma and Viral B. Shah and Christopher Rackauckas},
     booktitle={International Conference on Machine Learning},
     year={2021},
+    eprint={2105.03918},
+    archivePrefix={arXiv},
+    primaryClass={cs.LG}
 }
 ```
 
