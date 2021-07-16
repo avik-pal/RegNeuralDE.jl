@@ -1,6 +1,6 @@
 # RegNeuralDE
 
-Official Implementation of the *ICML 2021* Paper [**Opening the Blackbox: Accelerating Neural Differential Equations by Regularizing Internal Solver Heuristics**](https://arxiv.org/abs/2105.03918)
+Official Implementation of the *ICML 2021* Paper [**Opening the Blackbox: Accelerating Neural Differential Equations by Regularizing Internal Solver Heuristics**](http://proceedings.mlr.press/v139/pal21a.html)
 
 ## USAGE
 
@@ -18,16 +18,21 @@ The code will be downloaded in the `JULIA_PKG_DEVDIR` directory.
 If you found this codebase useful in your research, please consider citing
 
 ```bibtex
-@inproceedings{
-    pal2021opening,
-    title={{O}pening the {B}lackbox: {A}ccelerating {N}eural {D}ifferential {E}quations by {R}egularizing {I}nternal {S}olver {H}euristics},
-    author={Avik Pal and Yingbo Ma and Viral B. Shah and Christopher Rackauckas},
-    booktitle={International Conference on Machine Learning},
-    year={2021},
-    eprint={2105.03918},
-    archivePrefix={arXiv},
-    primaryClass={cs.LG}
+@InProceedings{pmlr-v139-pal21a,
+  title = 	 {Opening the Blackbox: Accelerating Neural Differential Equations by Regularizing Internal Solver Heuristics},
+  author =       {Pal, Avik and Ma, Yingbo and Shah, Viral and Rackauckas, Christopher V},
+  booktitle = 	 {Proceedings of the 38th International Conference on Machine Learning},
+  pages = 	 {8325--8335},
+  year = 	 {2021},
+  editor = 	 {Meila, Marina and Zhang, Tong},
+  volume = 	 {139},
+  series = 	 {Proceedings of Machine Learning Research},
+  month = 	 {18--24 Jul},
+  publisher =    {PMLR},
+  pdf = 	 {http://proceedings.mlr.press/v139/pal21a/pal21a.pdf},
+  url = 	 {http://proceedings.mlr.press/v139/pal21a.html},
 }
+
 ```
 
 ## DATASETS
